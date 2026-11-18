@@ -1,118 +1,187 @@
-// Kulostrel - a tiny BLIT386 game called "Catcher".
+// Kulostrel - a ball shooter for BLIT386.
 //
-// Move the paddle to catch the blocks falling from the top.
-// On a phone or tablet: drag or tap - the paddle centers under your finger.
-// On a computer: move the mouse, or use the left and right arrow keys (or A and D) as a fallback.
-// Catch one: +1 point. Miss one: lose a life. Run out of lives and the game starts over.
+// Aim the launcher, shoot a ball into the cluster hanging from the ceiling. Three or more balls of the same color pop;
+// balls that lose their hold fall. Every few shots the ceiling moves down a row. Clear the board to win the level; let
+// a ball cross the line above the launcher and the game is over.
 //
-// Every BLIT386 game is one class with three required methods:
-//   init()   - runs once at the start (we set up our colors here).
-//   update() - runs about 60 times a second (we move things and check for catches here).
-//   render() - runs about 60 times a second (we draw everything here).
+// Controls
+//   Left / Right (or A / D)   aim; tap for a small step, hold to turn
+//   Space, Up (or W), click   shoot
+//   Down (or S)               swap the current and the next ball
+//   Mouse                     aim at the pointer
 //
-// Plus optional hooks. This file uses testState(), which hands the score, lives, and positions to a play-tester as
-// plain numbers (engine 1.8.0+). Two more you can add later: configure() for screen settings or to turn off the
-// BLIT386 splash, and onHotReload() to keep score across init() edits while the Vite plugin hot-reloads (see the
-// commented examples below).
-//
-// We do not write a configure() method, so we get the default screen: 320 by 240 pixels at 60 frames per second.
-// Want to learn more? Read AGENTS.md or the docs/ folder next to this file.
-//
-// Testing tip: add `?seed=42` to the page address to get the same falling blocks every run, and open the browser
-// console and type `BT.testState()` to see the score, lives, and positions as numbers.
+// The game logic lives in board.js (the grid) and shot.js (the flying ball); this file reads input, keeps the game
+// state and draws. Testing tip: `?seed=42` in the address gives the same ball order every run, and
+// `BT.testState()` in the browser console shows the state as plain numbers.
 
-import { bootstrap, BT, Color32, Rect2i, Vector2i } from 'blit386';
+import { AudioClip, BT, bootstrap, Color32, Rect2i, SpriteSheet, Vector2i } from 'blit386';
+import { Board, cellCenter, EMPTY } from './board.js';
+import {
+    AIM_LIMIT,
+    AIM_SPEED,
+    BALL,
+    DEATH_Y,
+    FIELD_TOP,
+    FIELD_W,
+    FIELD_X,
+    LAUNCH_X,
+    LAUNCH_Y,
+    RADIUS,
+    ROW_H,
+    SCORE_DROP,
+    SCORE_POP,
+    SCREEN_H,
+    SCREEN_W,
+} from './config.js';
+import { LEVELS } from './levels.js';
+import { Shot, tracePath } from './shot.js';
 
-// Color slot numbers. We put real colors into these slots in init(), then draw using the numbers.
-// Slot 0 is always transparent, so we start counting at 1.
-const COLOR_BACKGROUND = 1;
-const COLOR_PADDLE = 2;
-const COLOR_ITEM = 3;
-const COLOR_TEXT = 4;
+// Palette slots for the scene.
+const C_BG = 1;
+const C_FIELD = 2;
+const C_WALL = 3;
+const C_TEXT = 4;
+const C_DIM = 5;
+const C_GUIDE = 6;
+const C_DANGER = 7;
+const C_LAUNCHER = 8;
 
-// Sizes and speeds. These are the fun knobs to turn. Change a number, save, and watch what happens.
-const PADDLE_WIDTH = 48;
-const PADDLE_HEIGHT = 8;
-const ITEM_SIZE = 10;
-const PADDLE_SPEED = 3; // how many pixels the paddle moves each step
-const ITEM_FALL_SPEED = 2; // how many pixels a block falls each step
-const SPAWN_EVERY = 45; // a new block appears every this many steps (60 steps is about one second)
-const STARTING_LIVES = 3;
+// Ball colors: each takes four slots starting at BALL_SLOTS (rim, body, highlight, unused).
+const BALL_SLOTS = 16;
+const BALL_COLORS = [
+    [220, 50, 60], // 0 red
+    [245, 200, 50], // 1 yellow
+    [70, 190, 80], // 2 green
+    [60, 120, 235], // 3 blue
+    [170, 80, 215], // 4 purple
+    [60, 205, 210], // 5 cyan
+];
+// A white ball, used for the flash when balls pop.
+const FLASH = BALL_COLORS.length;
 
-// Read `?seed=1234` from the page address. The same seed makes the blocks fall in the same places every run,
-// which is how you replay a bug or give a test a fixed starting point. No seed means a different game every time.
-/** @returns {number | null} */
-function readSeed() {
-    const raw = new URLSearchParams(window.location.search).get('seed');
+/** How long a key must be held before aiming turns continuously (ticks). Longer than a legacy terminal tap. */
+const AIM_HOLD_DELAY = 36;
+/** Degrees per tap. */
+const AIM_TAP = 2;
 
-    if (raw === null) {
-        return null;
-    }
+/** Frames a popped ball flashes before it disappears. */
+const POP_FRAMES = 8;
+/** Gravity for falling balls, pixels per update squared. */
+const GRAVITY = 0.25;
 
-    const seed = Number(raw);
+// The ball sprite, 8 x 8. 0 transparent, 1 rim, 2 body, 3 highlight.
+const BALL_PIXELS = ['..1111..', '.122221.', '12332221', '12322221', '12222221', '12222221', '.122221.', '..1111..'];
 
-    if (!Number.isSafeInteger(seed)) {
-        console.warn(`[game] Ignoring ?seed=${raw}: it must be a whole number.`);
+/** @typedef {{ x: number, y: number, vy: number, color: number, timer: number, falling: boolean }} Effect */
 
-        return null;
-    }
-
-    return seed;
+/**
+ * Palette offset that draws the ball sprite in the given color.
+ *
+ * @param {number} color
+ * @returns {number}
+ */
+function ballOffset(color) {
+    return BALL_SLOTS + color * 4 - 1;
 }
 
-// Turn a PNG blob into a data URL string, which a browser tool can read back out of the page.
-/**
- * @param {Blob} blob
- * @returns {Promise<string>}
- */
-function blobToDataURL(blob) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
+/** @returns {number | null} the `?seed=` from the address, if it is a whole number */
+function readSeed() {
+    const raw = new URLSearchParams(window.location.search).get('seed');
+    const seed = raw === null ? Number.NaN : Number(raw);
 
-        reader.onload = () => resolve(String(reader.result));
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(blob);
-    });
+    return Number.isSafeInteger(seed) ? seed : null;
+}
+
+/**
+ * @param {Color32} c
+ * @param {number} f brightness factor
+ * @returns {Color32}
+ */
+function shade(c, f) {
+    const k = (/** @type {number} */ v) => Math.max(0, Math.min(255, Math.round(v * f)));
+
+    return new Color32(k(c.r), k(c.g), k(c.b));
 }
 
 class Game {
-    // How big the screen is. We read the real size in init().
-    screen = new Vector2i(320, 240);
+    board = new Board();
+    levelIndex = 0;
 
-    // The paddle's initial position.
-    paddlePos = new Vector2i(0, 0);
+    /** @type {'aim' | 'fly' | 'won' | 'lost'} */
+    state = 'aim';
 
-    // The blocks falling right now. Each one is a Vector2i holding its top-left corner.
-    /** @type {Vector2i[]} */
-    items = [];
+    /** Degrees from straight up, positive to the right. */
+    aim = 0;
+    aimHeld = 0;
+    isMouseAim = false;
 
-    // The player's score and lives.
+    current = 0;
+    next = 0;
+
+    /** @type {Shot | null} */
+    shot = null;
+
     score = 0;
-    lives = STARTING_LIVES;
+    shotsLeft = 0;
+
+    /** @type {Effect[]} */
+    effects = [];
+
+    /** @type {{ x: number, y: number }[]} */
+    guide = [];
+
+    /** @type {SpriteSheet | null} */
+    ballSheet = null;
+    ballRect = new Rect2i(0, 0, BALL, BALL);
+
+    /** @type {Record<string, AudioClip | null>} */
+    sounds = { shoot: null, pop: null, drop: null, stick: null };
+
+    // Reused every frame so render() does not allocate.
+    pos = new Vector2i(0, 0);
+    rect = new Rect2i(0, 0, 0, 0);
+    pointer = new Vector2i(0, 0);
+    pointerDelta = new Vector2i(0, 0);
+
+    configure() {
+        return {
+            displaySize: new Vector2i(SCREEN_W, SCREEN_H),
+            keyboardLayout: /** @type {const} */ ('single'), // arrows and WASD both aim
+            isCapturingKeyboardScroll: true,
+        };
+    }
 
     async init() {
-        // Remember the screen size so the game fits no matter how big it is.
-        this.screen = BT.displaySize;
+        const palette = BT.paletteCreate(64);
 
-        // Make a palette (a numbered set of colors) and choose four colors.
-        // Color32(red, green, blue) - each value goes from 0 (none) to 255 (full).
-        const palette = BT.paletteCreate(16);
+        palette.set(C_BG, new Color32(14, 16, 30));
+        palette.set(C_FIELD, new Color32(24, 28, 50));
+        palette.set(C_WALL, new Color32(80, 90, 130));
+        palette.set(C_TEXT, new Color32(235, 240, 255));
+        palette.set(C_DIM, new Color32(130, 140, 175));
+        palette.set(C_GUIDE, new Color32(150, 160, 200));
+        palette.set(C_DANGER, new Color32(230, 70, 70));
+        palette.set(C_LAUNCHER, new Color32(170, 180, 215));
 
-        palette.set(COLOR_BACKGROUND, new Color32(18, 22, 40)); // dark blue
-        palette.set(COLOR_PADDLE, new Color32(90, 200, 160)); // teal
-        palette.set(COLOR_ITEM, new Color32(240, 180, 70)); // warm yellow
-        palette.set(COLOR_TEXT, new Color32(235, 240, 255)); // near white
+        [...BALL_COLORS, [240, 240, 250]].forEach(([r, g, b], i) => {
+            const base = new Color32(r, g, b);
+            const slot = BALL_SLOTS + i * 4;
+
+            palette.set(slot, shade(base, 0.55));
+            palette.set(slot + 1, base);
+            palette.set(slot + 2, shade(base, 1.45));
+        });
 
         BT.paletteSet(palette);
 
-        // Put the paddle in the middle, near the bottom.
-        this.paddlePos.x = Math.floor((this.screen.x - PADDLE_WIDTH) / 2);
-        this.paddlePos.y = this.screen.y - PADDLE_HEIGHT - 6;
+        const pixels = new Uint8Array(BALL * BALL);
 
-        // Out of the box, player 0 steers with WASD and the arrow keys belong to player 1.
-        // This game has one player, so let both sets of keys move the paddle.
-        BT.inputMap(0, BT.BTN_LEFT, 'KeyA', 'ArrowLeft');
-        BT.inputMap(0, BT.BTN_RIGHT, 'KeyD', 'ArrowRight');
+        BALL_PIXELS.forEach((line, y) => {
+            for (let x = 0; x < BALL; x++) {
+                pixels[y * BALL + x] = line[x] === '.' ? 0 : Number(line[x]);
+            }
+        });
+        this.ballSheet = SpriteSheet.fromIndexedPixels(BALL, BALL, pixels);
 
         const seed = readSeed();
 
@@ -120,151 +189,380 @@ class Game {
             BT.randomSeed(seed);
         }
 
-        // Dev builds only: let tests and AI agents grab exact frames, and read the state the old way.
-        // A shipped game (a production build) never has `window.__game`. The state itself comes from
-        // testState() below - `BT.testState()` is the newer way to read it and needs no global at all.
-        if (BT.isDevMode) {
-            // Object.assign instead of `window.__game = ...`, because the editor's type checker does not know
-            // about a `__game` property on `window` in a plain JavaScript file.
-            Object.assign(window, {
-                __game: {
-                    state: () => this.testState(),
-                    frame: async () => blobToDataURL(await BT.captureFrame()),
-                },
-            });
-        }
+        await this.loadSounds();
+        this.startLevel(0);
 
-        return true; // tell the engine that setup worked
+        return true;
+    }
+
+    async loadSounds() {
+        // Sound is a bonus: in a terminal without audio, or if synthesis fails, the game plays silently.
+        try {
+            this.sounds.shoot = await AudioClip.synth(BT.synthPreset.blip(1));
+            this.sounds.stick = await AudioClip.synth(BT.synthPreset.hit(2));
+            this.sounds.pop = await AudioClip.synth(BT.synthPreset.pickup(3));
+            this.sounds.drop = await AudioClip.synth(BT.synthPreset.pickup(7));
+        } catch (error) {
+            console.warn('[kulostrel] sounds unavailable', error);
+        }
+    }
+
+    /** @param {string} name */
+    play(name) {
+        const clip = this.sounds[name];
+
+        if (clip) {
+            BT.soundPlay(clip);
+        }
+    }
+
+    /** @param {number} index */
+    startLevel(index) {
+        const level = LEVELS[index];
+
+        this.levelIndex = index;
+        this.board.load(level.layout);
+        this.shotsLeft = level.shotsPerDrop;
+        this.state = 'aim';
+        this.shot = null;
+        this.effects = [];
+        this.aim = 0;
+        this.current = this.pickColor();
+        this.next = this.pickColor();
+    }
+
+    /** @returns {number} a color that is still on the board, so the level can always be finished */
+    pickColor() {
+        const colors = this.board.colorsLeft();
+
+        return colors.length > 0 ? BT.random.pick(colors) : 0;
     }
 
     update() {
-        // BLIT386 supports two ways to move the paddle: pointer input (mouse and touch) and the keyboard.
-        // We check the pointer first because it works on phones, tablets, and any computer with a mouse.
-        // The "0" you see in BT.isPointerActive(0) and BT.pointerPos(0) means "the first pointer slot."
-        // A phone can track several fingers at once; slot 0 is always the first (or only) one.
-        if (BT.isPointerActive(0)) {
-            // BT.pointerPos(0) returns a Vector2i: the exact pixel position of the pointer right now.
-            // We want the CENTER of the paddle under the pointer, not its left edge.
-            // Subtracting half the paddle width shifts it left so it is balanced around the cursor or finger.
-            this.paddlePos.x = BT.pointerPos(0).x - Math.floor(PADDLE_WIDTH / 2);
+        this.updateEffects();
+
+        if (this.state === 'aim') {
+            this.updateAim();
+        } else if (this.state === 'fly') {
+            this.updateShot();
+        } else if (this.isConfirmPressed()) {
+            // Won or lost: start over. Level progression comes with the level select.
+            if (this.state === 'lost') {
+                this.score = 0;
+            }
+
+            this.startLevel(this.state === 'won' ? (this.levelIndex + 1) % LEVELS.length : this.levelIndex);
+        }
+    }
+
+    /** @returns {boolean} */
+    isConfirmPressed() {
+        return (
+            BT.isPressed(BT.BTN_A, 0) ||
+            BT.isPressed(BT.BTN_UP, 0) ||
+            BT.isKeyPressed('Enter') ||
+            BT.isPressed(BT.BTN_POINTER_A, 0)
+        );
+    }
+
+    updateAim() {
+        const left = BT.isDown(BT.BTN_LEFT, 0);
+        const right = BT.isDown(BT.BTN_RIGHT, 0);
+
+        if (left || right) {
+            const dir = left ? -1 : 1;
+
+            this.isMouseAim = false;
+
+            if (this.aimHeld === 0) {
+                this.aim += dir * AIM_TAP;
+            } else if (this.aimHeld >= AIM_HOLD_DELAY) {
+                this.aim += dir * AIM_SPEED;
+            }
+
+            this.aimHeld += 1;
         } else {
-            // No pointer is active - fall back to the arrow keys, A and D (or a connected gamepad).
-            // BT.isDown() is true for every frame the button is held down, not just the frame it was pressed.
-            if (BT.isDown(BT.BTN_LEFT, 0)) {
-                this.paddlePos.x -= PADDLE_SPEED;
+            this.aimHeld = 0;
+        }
+
+        // The mouse takes over as soon as it moves, and gives way to the keys when they are pressed.
+        if (BT.isPointerActive(0)) {
+            BT.pointerDeltaTo(this.pointerDelta, 0);
+
+            if (this.pointerDelta.x !== 0 || this.pointerDelta.y !== 0 || BT.isPressed(BT.BTN_POINTER_A, 0)) {
+                this.isMouseAim = true;
             }
 
-            if (BT.isDown(BT.BTN_RIGHT, 0)) {
-                this.paddlePos.x += PADDLE_SPEED;
+            if (this.isMouseAim) {
+                BT.pointerPosTo(this.pointer, 0);
+
+                const dx = this.pointer.x - LAUNCH_X;
+                const dy = Math.min(this.pointer.y - LAUNCH_Y, -1);
+
+                this.aim = (Math.atan2(dx, -dy) * 180) / Math.PI;
             }
         }
 
-        // Keep the paddle on the screen no matter how it moved.
-        // Math.floor makes sure we store a whole number, not a fraction of a pixel.
-        const maxX = this.screen.x - PADDLE_WIDTH;
-        if (this.paddlePos.x < 0) {
-            this.paddlePos.x = 0;
-        }
-        if (this.paddlePos.x > maxX) {
-            this.paddlePos.x = maxX;
+        this.aim = Math.max(-AIM_LIMIT, Math.min(AIM_LIMIT, this.aim));
+        this.guide = tracePath(this.board, LAUNCH_X, LAUNCH_Y, this.aim, 1, 4);
+
+        if (BT.isPressed(BT.BTN_DOWN, 0) || BT.isPressed(BT.BTN_POINTER_B, 0)) {
+            [this.current, this.next] = [this.next, this.current];
         }
 
-        // Every SPAWN_EVERY steps, drop a new block at a random spot along the top.
-        if (BT.ticks % SPAWN_EVERY === 0) {
-            // BT.random.int(n) picks a whole number from 0 up to (but not including) n. Unlike the browser's own random,
-            // BT.random can be seeded: a `?seed=` in the address replays the exact same drops.
-            const x = BT.random.int(this.screen.x - ITEM_SIZE);
-            this.items.push(new Vector2i(x, -ITEM_SIZE));
+        if (this.isConfirmPressed()) {
+            this.shot = new Shot(LAUNCH_X, LAUNCH_Y, this.aim);
+            this.state = 'fly';
+            this.play('shoot');
+        }
+    }
+
+    updateShot() {
+        const shot = /** @type {Shot} */ (this.shot);
+
+        if (!shot.advance(this.board)) {
+            return;
         }
 
-        // The paddle as a rectangle, used to check for catches.
-        const paddleRect = new Rect2i(this.paddlePos.x, this.paddlePos.y, PADDLE_WIDTH, PADDLE_HEIGHT);
+        const cell = this.board.snap(shot.x, shot.y);
 
-        // Move each block down, then decide: caught, missed, or still falling.
-        /** @type {Vector2i[]} */
-        const stillFalling = [];
-        for (const item of this.items) {
-            item.y += ITEM_FALL_SPEED;
-            const itemRect = new Rect2i(item.x, item.y, ITEM_SIZE, ITEM_SIZE);
+        this.shot = null;
 
-            if (paddleRect.isIntersecting(itemRect)) {
-                this.score += 1; // the paddle touched it: caught
-            } else if (item.y > this.screen.y) {
-                this.lives -= 1; // it fell off the bottom: missed
+        if (cell === null) {
+            // Nowhere to stick: only possible with a full board. Treat it as a loss.
+            this.state = 'lost';
+
+            return;
+        }
+
+        const { popped, dropped } = this.board.place(cell, this.current);
+
+        for (const { cell: c, color } of popped) {
+            this.addEffect(c.row, c.col, color, false);
+        }
+
+        for (const { cell: c, color } of dropped) {
+            this.addEffect(c.row, c.col, color, true);
+        }
+
+        this.score += popped.length * SCORE_POP + dropped.length * SCORE_DROP;
+
+        if (dropped.length > 0) {
+            this.play('drop');
+        } else if (popped.length > 0) {
+            this.play('pop');
+        } else {
+            this.play('stick');
+        }
+
+        if (this.board.isEmpty()) {
+            this.state = 'won';
+
+            return;
+        }
+
+        this.shotsLeft -= 1;
+
+        if (this.shotsLeft <= 0) {
+            this.board.lower();
+            this.shotsLeft = LEVELS[this.levelIndex].shotsPerDrop;
+        }
+
+        if (this.isOverLine()) {
+            this.state = 'lost';
+
+            return;
+        }
+
+        this.current = this.next;
+
+        // The next ball must be a color that is still on the board.
+        const colors = this.board.colorsLeft();
+
+        if (!colors.includes(this.current)) {
+            this.current = this.pickColor();
+        }
+
+        this.next = this.pickColor();
+        this.state = 'aim';
+    }
+
+    /** @returns {boolean} true when the lowest ball reaches the line above the launcher */
+    isOverLine() {
+        const row = this.board.lowestRow();
+
+        return row >= 0 && cellCenter(row, 0, this.board.drop).y + RADIUS > DEATH_Y;
+    }
+
+    /**
+     * @param {number} row
+     * @param {number} col
+     * @param {number} color
+     * @param {boolean} falling
+     */
+    addEffect(row, col, color, falling) {
+        const p = cellCenter(row, col, this.board.drop);
+
+        this.effects.push({ x: p.x, y: p.y, vy: falling ? -1 : 0, color, timer: POP_FRAMES, falling });
+    }
+
+    updateEffects() {
+        for (const e of this.effects) {
+            if (e.falling) {
+                e.vy += GRAVITY;
+                e.y += e.vy;
             } else {
-                stillFalling.push(item); // still on its way down
+                e.timer -= 1;
             }
         }
-        this.items = stillFalling;
 
-        // Out of lives? Start a fresh game.
-        if (this.lives <= 0) {
-            this.score = 0;
-            this.lives = STARTING_LIVES;
-            this.items = [];
-        }
+        this.effects = this.effects.filter((e) => (e.falling ? e.y - RADIUS < SCREEN_H : e.timer > 0));
     }
 
     render() {
-        // Paint the background first. This also erases last frame's drawing.
-        BT.clear(COLOR_BACKGROUND);
+        BT.clear(C_BG);
+        this.renderField();
+        this.renderBoard();
+        this.renderLauncher();
+        this.renderEffects();
+        this.renderHud();
 
-        // Draw every falling block.
-        for (const item of this.items) {
-            BT.drawRectFill(new Rect2i(item.x, item.y, ITEM_SIZE, ITEM_SIZE), COLOR_ITEM);
+        if (this.state === 'won' || this.state === 'lost') {
+            this.renderMessage();
+        }
+    }
+
+    renderField() {
+        const ceiling = FIELD_TOP + this.board.drop * ROW_H;
+
+        this.fillRect(FIELD_X, 0, FIELD_W, SCREEN_H, C_FIELD);
+        this.fillRect(0, 0, FIELD_X, SCREEN_H, C_WALL);
+        this.fillRect(FIELD_X + FIELD_W, 0, FIELD_X, SCREEN_H, C_WALL);
+        this.fillRect(FIELD_X, 0, FIELD_W, ceiling, C_WALL);
+
+        // The line the balls must not cross. It blinks when the lowest ball is close.
+        const row = this.board.lowestRow();
+        const isClose = row >= 0 && cellCenter(row, 0, this.board.drop).y + RADIUS + 2 * ROW_H > DEATH_Y;
+        const color = isClose && Math.floor(BT.ticks / 15) % 2 === 0 ? C_DANGER : C_WALL;
+
+        for (let x = FIELD_X; x < FIELD_X + FIELD_W; x += 4) {
+            this.fillRect(x, DEATH_Y, 2, 1, color);
+        }
+    }
+
+    renderBoard() {
+        const { cells, drop } = this.board;
+
+        for (let row = 0; row < cells.length; row++) {
+            for (let col = 0; col < cells[row].length; col++) {
+                const color = cells[row][col];
+
+                if (color !== EMPTY) {
+                    const p = cellCenter(row, col, drop);
+
+                    this.drawBall(p.x, p.y, color);
+                }
+            }
+        }
+    }
+
+    renderLauncher() {
+        if (this.state === 'aim') {
+            for (const p of this.guide) {
+                this.pos.set(Math.floor(p.x), Math.floor(p.y));
+                BT.drawPixel(this.pos, C_GUIDE);
+            }
         }
 
-        // Draw the paddle.
-        BT.drawRectFill(new Rect2i(this.paddlePos.x, this.paddlePos.y, PADDLE_WIDTH, PADDLE_HEIGHT), COLOR_PADDLE);
+        // A short barrel pointing where the shot goes.
+        const rad = (this.aim * Math.PI) / 180;
+        const tipX = Math.floor(LAUNCH_X + Math.sin(rad) * 9);
+        const tipY = Math.floor(LAUNCH_Y - Math.cos(rad) * 9);
 
-        // Show the score and lives in the top-left corner.
-        BT.systemPrint(new Vector2i(6, 6), COLOR_TEXT, `Score ${this.score}`);
-        BT.systemPrint(new Vector2i(6, 18), COLOR_TEXT, `Lives ${this.lives}`);
+        BT.drawLine(new Vector2i(LAUNCH_X, LAUNCH_Y), new Vector2i(tipX, tipY), C_LAUNCHER);
+        this.fillRect(LAUNCH_X - 7, LAUNCH_Y + 4, 14, 3, C_LAUNCHER);
+
+        if (this.shot) {
+            this.drawBall(this.shot.x, this.shot.y, this.current);
+        } else if (this.state === 'aim') {
+            this.drawBall(LAUNCH_X, LAUNCH_Y, this.current);
+        }
     }
 
-    // The game as plain numbers, for a test or an AI agent that cannot read pixels. The engine never calls this on
-    // its own: while the dev server runs, `BT.testState()` in the browser console (or `npx blit play`) reads it.
-    // Add a field here when you want to check something new, for example `level: this.level`.
+    renderEffects() {
+        for (const e of this.effects) {
+            const isFlash = !e.falling && Math.floor(e.timer / 2) % 2 === 0;
+
+            this.drawBall(e.x, e.y, isFlash ? FLASH : e.color);
+        }
+    }
+
+    renderHud() {
+        const x = FIELD_X * 2 + FIELD_W + 3;
+
+        BT.systemPrint(new Vector2i(x, 2), C_DIM, 'KOLO');
+        BT.systemPrint(new Vector2i(x, 14), C_TEXT, String(this.levelIndex + 1));
+        BT.systemPrint(new Vector2i(x, 32), C_DIM, 'SKORE');
+        BT.systemPrint(new Vector2i(x, 44), C_TEXT, String(this.score));
+        BT.systemPrint(new Vector2i(x, 62), C_DIM, 'STROP');
+        BT.systemPrint(new Vector2i(x, 74), C_TEXT, String(this.shotsLeft));
+        BT.systemPrint(new Vector2i(x, 92), C_DIM, 'DALSI');
+
+        if (this.state !== 'lost') {
+            this.drawBall(x + 14, 110, this.next);
+        }
+    }
+
+    renderMessage() {
+        const title = this.state === 'won' ? 'KOLO HOTOVO' : 'KONEC HRY';
+        const hint = 'MEZERNIK';
+        const cx = FIELD_X + FIELD_W / 2;
+        const t = BT.systemPrintMeasure(title);
+        const h = BT.systemPrintMeasure(hint);
+
+        this.fillRect(FIELD_X + 8, 40, FIELD_W - 16, 34, C_BG);
+        BT.drawRect(new Rect2i(FIELD_X + 8, 40, FIELD_W - 16, 34), C_WALL);
+        BT.systemPrint(new Vector2i(Math.floor(cx - t.x / 2), 44), this.state === 'won' ? C_TEXT : C_DANGER, title);
+        BT.systemPrint(new Vector2i(Math.floor(cx - h.x / 2), 58), C_DIM, hint);
+    }
+
+    /**
+     * @param {number} x center
+     * @param {number} y center
+     * @param {number} color
+     */
+    drawBall(x, y, color) {
+        this.pos.set(Math.floor(x - RADIUS), Math.floor(y - RADIUS));
+        BT.drawSprite(/** @type {SpriteSheet} */ (this.ballSheet), this.ballRect, this.pos, ballOffset(color));
+    }
+
+    /**
+     * @param {number} x
+     * @param {number} y
+     * @param {number} w
+     * @param {number} h
+     * @param {number} color
+     */
+    fillRect(x, y, w, h, color) {
+        this.rect.set(x, y, w, h);
+        BT.drawRectFill(this.rect, color);
+    }
+
+    // The game as plain numbers for play-testing: `BT.testState()` in the console, or `npx blit play`.
     testState() {
         return {
-            ticks: BT.ticks,
+            state: this.state,
+            level: this.levelIndex + 1,
             score: this.score,
-            lives: this.lives,
-            paddle: { x: this.paddlePos.x, y: this.paddlePos.y, width: PADDLE_WIDTH, height: PADDLE_HEIGHT },
-            items: this.items.map((item) => ({ x: item.x, y: item.y })),
+            shotsLeft: this.shotsLeft,
+            drop: this.board.drop,
+            aim: Math.round(this.aim * 10) / 10,
+            current: this.current,
+            next: this.next,
+            ballsLeft: this.board.cells.flat().filter((c) => c !== EMPTY).length,
+            lowestRow: this.board.lowestRow(),
         };
     }
-
-    // Optional hardware settings. Uncomment to change the screen size or speed, or to
-    // turn off the BLIT386 splash that plays when you build your game for real.
-    // Full detail: docs/basics.md
-    //
-    // configure() {
-    //     return {
-    //         displaySize: new Vector2i(320, 240),
-    //         targetFPS: 60,
-    //         isSplashEnabled: false,
-    //     };
-    // }
-
-    // Optional hot-reload hook (engine 1.4.0+). The blit386() Vite plugin calls this after a
-    // save that re-runs init() (or after a method-only swap). Use the snapshot to keep score
-    // and other fields when you tweak init(). Leave it commented until you need it.
-    // Full detail: docs/hot-reload.md
-    //
-    // onHotReload(context) {
-    //     // Only restore after a re-init (not after a method-only swap).
-    //     if (context.reason !== 'reinit' || !context.snapshot) {
-    //         return;
-    //     }
-    //     if (typeof context.snapshot.score === 'number') {
-    //         this.score = context.snapshot.score;
-    //     }
-    //     if (typeof context.snapshot.lives === 'number') {
-    //         this.lives = context.snapshot.lives;
-    //     }
-    // }
 }
 
-// Hand the Game class to BLIT386. It builds one game, runs init() once, then update() and render() about 60 times a second.
 bootstrap(Game);
