@@ -1,34 +1,37 @@
-# Kulostrel
+# Kulostřel
 
-A little pixel game built with [BLIT386](https://www.npmjs.com/package/blit386).
+Logická střílečka kuliček v enginu [BLIT386](https://blit386.dev). Hraje se v prohlížeči i v terminálu.
 
-## Run it
+Zamiř odpalovačem a vystřel kuličku do shluku, který visí ze stropu. Tři a více kuliček stejné barvy prasknou; kuličky,
+které tím ztratí spojení se stropem, spadnou. Po několika výstřelech sjede strop o řadu níž. Vyčisti plochu a kolo je
+tvoje; když kulička překročí čáru nad odpalovačem, hra končí.
 
-You need [Node.js](https://nodejs.org) installed once (download the big LTS button). Then, in this folder:
+## Ovládání
+
+| Akce | Klávesnice | Myš |
+| --- | --- | --- |
+| Mířit | šipky vlevo/vpravo nebo A/D (ťuknutí = malý krok, podržení = plynulé otáčení) | pohyb myší |
+| Vystřelit | mezerník, šipka nahoru nebo W | levé tlačítko |
+| Prohodit aktuální a další kuličku | šipka dolů nebo S | pravé tlačítko |
+
+## Spuštění
+
+Potřebuješ [Bun](https://bun.sh) 1.3+.
 
 ```bash
 bun install
-bun run dev
+bun run dev    # v prohlížeči (adresu vypíše terminál)
+bun run term   # v terminálu přes blit-term (Luquas95/Blit386_ASCI)
+bun test       # testy herní logiky
 ```
 
-A web address like `http://localhost:5173` appears. Open it in your browser to play.
+## Struktura
 
-- Phone or tablet: tap or drag - the paddle follows your finger.
-- Computer: move the mouse to steer the paddle, or use the left and right arrow keys (or A and D) as a fallback.
-
-Catch the falling blocks before they reach the bottom.
-
-## Change the game
-
-Open `src/game.js`. Every line has a comment explaining what it does. Change a number or a color, save the file, and
-your browser updates by itself - most edits keep the game running (hot reload) instead of wiping your score. Edit a PNG
-or sound under `public/` and that asset updates in place too. A few things to try:
-
-- Make the blocks fall faster: find `ITEM_FALL_SPEED`.
-- Make the paddle wider or narrower: `PADDLE_WIDTH`.
-- Change the colors: the `palette.set(...)` lines in `init`.
-
-More about hot reload: `docs/hot-reload.md`.
+- `src/game.js` - herní smyčka: vstup, stavy hry, vykreslování.
+- `src/board.js` - mřížka kuliček (šestiúhelníkové rozložení, praskání skupin, padání kuliček).
+- `src/shot.js` - let kuličky, odrazy od stěn, pomocná čára míření.
+- `src/levels.js` - úrovně jako textové mapy.
+- `src/config.js` - rozměry a laditelné hodnoty.
 
 ## Helpful commands
 
