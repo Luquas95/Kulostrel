@@ -7,6 +7,7 @@
 //   rows          how deep the starting layout is
 //   cluster       chance that a ball copies the color of a ball it touches; high = big easy groups
 //   gaps          chance of an empty cell below the top row; gaps make the shape ragged and need bank shots
+//   seconds       the clock: every second left when the level is cleared is a bonus (scoring.js)
 //   secondsPerRow the balls creep down all the time; this is how many seconds they take to move one row
 //
 // Layout format (also accepted by Board.load): one string is one row, a digit is a color (0 red, 1 yellow, 2 green,
@@ -18,20 +19,29 @@ import { Board, EMPTY, rowWidth } from './board.js';
 /** How many ball colors exist (see BALL_COLORS in game.js). */
 export const COLOR_COUNT = 6;
 
-/** @typedef {{ name: string, colors: number, rows: number, cluster: number, gaps: number, secondsPerRow: number }} Level */
+/**
+ * @typedef {object} Level
+ * @property {string} name
+ * @property {number} colors
+ * @property {number} rows
+ * @property {number} cluster
+ * @property {number} gaps
+ * @property {number} seconds
+ * @property {number} secondsPerRow
+ */
 
 /** @type {Level[]} */
 export const LEVELS = [
-    { name: 'Rozcvicka', colors: 3, rows: 3, cluster: 0.7, gaps: 0.1, secondsPerRow: 12 },
-    { name: 'Lehka chuze', colors: 3, rows: 4, cluster: 0.6, gaps: 0.15, secondsPerRow: 11 },
-    { name: 'Ctyri barvy', colors: 4, rows: 4, cluster: 0.6, gaps: 0.15, secondsPerRow: 11 },
-    { name: 'Hloubka', colors: 4, rows: 5, cluster: 0.5, gaps: 0.2, secondsPerRow: 10 },
-    { name: 'Pet barev', colors: 5, rows: 5, cluster: 0.5, gaps: 0.2, secondsPerRow: 10 },
-    { name: 'Houstne to', colors: 5, rows: 6, cluster: 0.45, gaps: 0.25, secondsPerRow: 9 },
-    { name: 'Sest barev', colors: 6, rows: 5, cluster: 0.45, gaps: 0.2, secondsPerRow: 9 },
-    { name: 'Zrychleni', colors: 6, rows: 6, cluster: 0.4, gaps: 0.25, secondsPerRow: 8 },
-    { name: 'Tvrdy orisek', colors: 6, rows: 7, cluster: 0.35, gaps: 0.25, secondsPerRow: 8 },
-    { name: 'Finale', colors: 6, rows: 8, cluster: 0.3, gaps: 0.3, secondsPerRow: 7 },
+    { name: 'Rozcvicka', colors: 3, rows: 3, cluster: 0.7, gaps: 0.1, seconds: 45, secondsPerRow: 12 },
+    { name: 'Lehka chuze', colors: 3, rows: 4, cluster: 0.6, gaps: 0.15, seconds: 50, secondsPerRow: 11 },
+    { name: 'Ctyri barvy', colors: 4, rows: 4, cluster: 0.6, gaps: 0.15, seconds: 55, secondsPerRow: 11 },
+    { name: 'Hloubka', colors: 4, rows: 5, cluster: 0.5, gaps: 0.2, seconds: 60, secondsPerRow: 10 },
+    { name: 'Pet barev', colors: 5, rows: 5, cluster: 0.5, gaps: 0.2, seconds: 65, secondsPerRow: 10 },
+    { name: 'Houstne to', colors: 5, rows: 6, cluster: 0.45, gaps: 0.25, seconds: 70, secondsPerRow: 9 },
+    { name: 'Sest barev', colors: 6, rows: 5, cluster: 0.45, gaps: 0.2, seconds: 70, secondsPerRow: 9 },
+    { name: 'Zrychleni', colors: 6, rows: 6, cluster: 0.4, gaps: 0.25, seconds: 75, secondsPerRow: 8 },
+    { name: 'Tvrdy orisek', colors: 6, rows: 7, cluster: 0.35, gaps: 0.25, seconds: 80, secondsPerRow: 8 },
+    { name: 'Finale', colors: 6, rows: 8, cluster: 0.3, gaps: 0.3, seconds: 90, secondsPerRow: 7 },
 ];
 
 /**

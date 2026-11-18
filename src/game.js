@@ -11,8 +11,9 @@
 //   Mouse                     aim at the pointer
 //   Escape                    back to the title screen
 //
-// The title screen picks a level (Left / Right) among the unlocked ones. Clearing a level unlocks the next one and
-// keeps the best score (progress.js). Losing a level ends the run: everything locks again and play restarts at level 1.
+// The title screen picks a level (Left / Right) among the unlocked ones. Clearing a level unlocks the next one; the
+// best score of a whole game is saved (progress.js). Losing a level ends the game: everything locks again and play
+// restarts at level 1. Scoring (points, combo, time bonus) lives in scoring.js, jingles in music.js.
 //
 // The game logic lives in board.js (the grid) and shot.js (the flying ball); this file reads input, keeps the game
 // state and draws. Testing tip: `?seed=42` in the address gives the same ball order every run, and
@@ -32,13 +33,13 @@ import {
     LAUNCH_Y,
     RADIUS,
     ROW_H,
-    SCORE_DROP,
-    SCORE_POP,
     SCREEN_H,
     SCREEN_W,
 } from './config.js';
 import { generateLayout, LEVELS } from './levels.js';
+import { frequency, JINGLES, JinglePlayer } from './music.js';
 import { Progress } from './progress.js';
+import { Scoring } from './scoring.js';
 import { Shot, tracePath } from './shot.js';
 
 // Palette slots for the scene.
@@ -137,8 +138,28 @@ class Game {
     /** The level picked on the title screen. */
     menuIndex = 0;
 
-    /** True when the level just cleared beat the saved best score. */
+    /** True when the score just reached beat the saved best. */
     isNewBest = false;
+
+    scoring = new Scoring();
+
+    /** Updates spent in the current level, for its clock. */
+    levelTicks = 0;
+
+    /** The time bonus of the level just cleared. */
+    bonus = 0;
+
+    /** @type {Map<string, AudioClip>} one rendered clip per jingle note */
+    noteClips = new Map();
+
+    jingle = new JinglePlayer(
+        (/** @type {number} */ note, /** @type {number} */ seconds) => this.noteClips.get(`${note}/${seconds}`) ?? null,
+        (/** @type {AudioClip} */ clip) => BT.soundPlay(clip, { volume: 0.5 }),
+    );
+
+    /** @type {SpriteSheet | null} a checkerboard that dims the game behind the end-of-level box */
+    dimSheet = null;
+    screenRect = new Rect2i(0, 0, SCREEN_W, SCREEN_H);
 
     /** Degrees from straight up, positive to the right. */
     aim = 0;
@@ -150,8 +171,6 @@ class Game {
 
     /** @type {Shot | null} */
     shot = null;
-
-    score = 0;
 
     /** @type {Effect[]} */
     effects = [];
@@ -213,6 +232,17 @@ class Game {
         });
         this.ballSheet = SpriteSheet.fromIndexedPixels(BALL, BALL, pixels);
 
+        const dim = new Uint8Array(SCREEN_W * SCREEN_H);
+
+        for (let i = 0; i < dim.length; i++) {
+            const x = i % SCREEN_W;
+            const y = Math.floor(i / SCREEN_W);
+
+            dim[i] = (x + y) % 2 === 0 ? C_BG : 0;
+        }
+
+        this.dimSheet = SpriteSheet.fromIndexedPixels(SCREEN_W, SCREEN_H, dim);
+
         const seed = readSeed();
 
         if (seed !== null) {
@@ -235,6 +265,34 @@ class Game {
             this.sounds.stick = await AudioClip.synth(BT.synthPreset.hit(2));
             this.sounds.pop = await AudioClip.synth(BT.synthPreset.pickup(3));
             this.sounds.drop = await AudioClip.synth(BT.synthPreset.pickup(7));
+
+            for (const jingle of Object.values(JINGLES)) {
+                const beat = 60 / jingle.bpm;
+
+                for (const [note, beats] of jingle.notes) {
+                    const seconds = Math.round(beats * beat * 0.9 * 1000) / 1000;
+                    const key = `${note}/${seconds}`;
+
+                    if (note !== null && !this.noteClips.has(key)) {
+                        const clip = await AudioClip.synth({
+                            waveform: 'square',
+                            frequency: frequency(note),
+                            duration: seconds,
+                            volume: 0.35,
+                            dutyCycle: 0.25,
+                            envelope: {
+                                attack: 0.005,
+                                decay: 0.08,
+                                sustain: 0.6,
+                                release: Math.min(0.12, seconds / 2),
+                            },
+                            seed: 1,
+                        });
+
+                        this.noteClips.set(key, clip);
+                    }
+                }
+            }
         } catch (error) {
             console.warn('[kulostrel] sounds unavailable', error);
         }
@@ -249,13 +307,23 @@ class Game {
         }
     }
 
-    /** @param {number} index */
-    startLevel(index) {
+    /**
+     * @param {number} index
+     * @param {boolean} isNewGame true to start counting the score from zero
+     */
+    startLevel(index, isNewGame) {
         const level = LEVELS[index];
 
+        if (isNewGame) {
+            this.scoring.reset();
+            this.jingle.start(JINGLES.start, BT.targetFPS);
+        }
+
+        this.scoring.startLevel();
         this.levelIndex = index;
+        this.levelTicks = 0;
+        this.bonus = 0;
         this.board.load(generateLayout(level, () => BT.random.next()));
-        this.score = 0;
         this.isNewBest = false;
         this.state = 'aim';
         this.shot = null;
@@ -272,8 +340,14 @@ class Game {
         return colors.length > 0 ? BT.random.pick(colors) : 0;
     }
 
+    /** @returns {number} whole seconds left on the level's clock */
+    secondsLeft() {
+        return Math.max(0, Math.ceil(LEVELS[this.levelIndex].seconds - this.levelTicks / BT.targetFPS));
+    }
+
     update() {
         this.updateEffects();
+        this.jingle.update();
 
         if (this.state === 'title') {
             this.updateTitle();
@@ -283,6 +357,7 @@ class Game {
 
         // Escape leaves a level for the title screen at any time.
         if (BT.isKeyPressed('Escape')) {
+            this.progress.record(this.scoring.total);
             this.menuIndex = this.levelIndex;
             this.state = 'title';
             this.effects = [];
@@ -291,6 +366,8 @@ class Game {
         }
 
         if (this.state === 'aim' || this.state === 'fly') {
+            this.levelTicks += 1;
+
             // The balls creep down all the time, at the level's pace.
             this.board.descend(1 / (LEVELS[this.levelIndex].secondsPerRow * BT.targetFPS));
 
@@ -307,9 +384,9 @@ class Game {
             this.updateShot();
         } else if (this.isConfirmPressed()) {
             if (this.state === 'lost') {
-                this.startLevel(0);
+                this.startLevel(0, true);
             } else if (this.levelIndex + 1 < LEVELS.length) {
-                this.startLevel(this.levelIndex + 1);
+                this.startLevel(this.levelIndex + 1, false);
             } else {
                 // The last level is done: back to the title screen.
                 this.menuIndex = this.levelIndex;
@@ -323,7 +400,9 @@ class Game {
         this.state = 'lost';
         this.shot = null;
         this.progress.restart();
+        this.isNewBest = this.progress.record(this.scoring.total);
         this.menuIndex = 0;
+        this.jingle.start(JINGLES.lost, BT.targetFPS);
     }
 
     updateTitle() {
@@ -339,7 +418,7 @@ class Game {
 
         if (this.isConfirmPressed()) {
             // The press is consumed this update; the first shot needs a new one.
-            this.startLevel(this.menuIndex);
+            this.startLevel(this.menuIndex, true);
         }
     }
 
@@ -433,7 +512,7 @@ class Game {
             this.addEffect(c.row, c.col, color, true);
         }
 
-        this.score += popped.length * SCORE_POP + dropped.length * SCORE_DROP;
+        this.scoring.shot(popped.length, dropped.length);
 
         if (dropped.length > 0) {
             this.play('drop');
@@ -444,8 +523,13 @@ class Game {
         }
 
         if (this.board.isEmpty()) {
+            const isLast = this.levelIndex + 1 >= LEVELS.length;
+
             this.state = 'won';
-            this.isNewBest = this.progress.complete(this.levelIndex, this.score);
+            this.bonus = this.scoring.clear(this.secondsLeft());
+            this.progress.complete(this.levelIndex);
+            this.isNewBest = this.progress.record(this.scoring.total);
+            this.jingle.start(isLast ? JINGLES.finale : JINGLES.won, BT.targetFPS);
 
             return;
         }
@@ -591,15 +675,22 @@ class Game {
     renderHud() {
         const x = FIELD_X * 2 + FIELD_W + 2;
 
-        BT.systemPrint(new Vector2i(x, 2), C_DIM, 'KOLO');
-        BT.systemPrint(new Vector2i(x, 14), C_TEXT, String(this.levelIndex + 1));
-        BT.systemPrint(new Vector2i(x, 28), C_DIM, 'SKORE');
-        BT.systemPrint(new Vector2i(x, 40), C_TEXT, String(this.score));
-        BT.systemPrint(new Vector2i(x, 54), C_DIM, 'DALSI');
+        const left = this.secondsLeft();
 
-        if (this.state !== 'lost') {
-            this.drawBall(x + 14, 72, this.next);
+        BT.systemPrint(new Vector2i(x, 1), C_DIM, 'KOLO');
+        BT.systemPrint(new Vector2i(x, 11), C_TEXT, String(this.levelIndex + 1));
+        BT.systemPrint(new Vector2i(x, 24), C_DIM, 'SKORE');
+        BT.systemPrint(new Vector2i(x, 34), C_TEXT, String(this.scoring.total));
+        BT.systemPrint(new Vector2i(x, 47), C_DIM, 'CAS');
+        // The clock turns red for the last ten seconds of its bonus.
+        BT.systemPrint(new Vector2i(x, 57), left <= 10 ? C_DANGER : C_TEXT, String(left));
+
+        if (this.scoring.combo > 0) {
+            BT.systemPrint(new Vector2i(x, 70), C_GUIDE, `x${this.scoring.multiplier}`);
         }
+
+        // The next ball waits beside the launcher.
+        this.drawBall(LAUNCH_X - 16, LAUNCH_Y + 2, this.next);
     }
 
     renderTitle() {
@@ -630,10 +721,8 @@ class Game {
             BT.systemPrint(new Vector2i(SCREEN_W - 16, 29), C_GUIDE, '>');
         }
 
-        const best = this.progress.bestOf(n);
-
-        if (best > 0) {
-            this.printCentered(`REKORD ${best}`, cx, 53, C_DIM);
+        if (this.progress.top > 0) {
+            this.printCentered(`REKORD ${this.progress.top}`, cx, 53, C_DIM);
         }
 
         if (Math.floor(BT.ticks / 30) % 2 === 0) {
@@ -648,20 +737,31 @@ class Game {
         const hint = isWon ? (isLast ? 'MEZERNIK MENU' : 'MEZERNIK DAL') : 'MEZERNIK OD KOLA 1';
         const cx = SCREEN_W / 2;
 
-        // The screen is narrow, so the box spans the playfield and the side panel (render() hides the panel).
-        this.fillRect(4, 8, SCREEN_W - 8, 60, C_BG);
-        BT.drawRect(new Rect2i(4, 8, SCREEN_W - 8, 60), C_WALL);
-        this.printCentered(title, cx, 11, isWon ? C_TEXT : C_DANGER);
-        this.printCentered(`SKORE ${this.score}`, cx, 24, C_TEXT);
+        // Dim the whole game, then a solid box on top (render() hides the side panel).
+        this.pos.set(0, 0);
+        BT.drawSprite(/** @type {SpriteSheet} */ (this.dimSheet), this.screenRect, this.pos, 0);
+        this.fillRect(4, 4, SCREEN_W - 8, 72, C_BG);
+        BT.drawRect(new Rect2i(4, 4, SCREEN_W - 8, 72), C_WALL);
+        this.printCentered(title, cx, 6, isWon ? C_TEXT : C_DANGER);
 
-        // Under the score: a new best, or the best to beat.
-        if (isWon && this.isNewBest) {
-            this.printCentered('NOVY REKORD', cx, 37, C_GUIDE);
-        } else if (this.progress.bestOf(this.levelIndex) > 0) {
-            this.printCentered(`REKORD ${this.progress.bestOf(this.levelIndex)}`, cx, 37, C_DIM);
+        let y = 18;
+
+        if (isWon) {
+            this.printCentered(`BODY ${this.scoring.level}`, cx, y, C_DIM);
+            this.printCentered(`CAS +${this.bonus}`, cx, y + 10, C_DIM);
+            y += 21;
         }
 
-        this.printCentered(hint, cx, 51, C_DIM);
+        this.printCentered(`CELKEM ${this.scoring.total}`, cx, y, C_TEXT);
+
+        // Under the total: a new best, or the best to beat.
+        if (this.isNewBest) {
+            this.printCentered('NOVY REKORD', cx, y + 11, C_GUIDE);
+        } else if (this.progress.top > 0) {
+            this.printCentered(`REKORD ${this.progress.top}`, cx, y + 11, C_DIM);
+        }
+
+        this.printCentered(hint, cx, 63, C_DIM);
     }
 
     /**
@@ -705,7 +805,9 @@ class Game {
             level: this.levelIndex + 1,
             unlocked: this.progress.unlocked,
             menu: this.menuIndex + 1,
-            score: this.score,
+            score: this.scoring.total,
+            combo: this.scoring.combo,
+            secondsLeft: this.secondsLeft(),
             drop: Math.round(this.board.drop * 100) / 100,
             aim: Math.round(this.aim * 10) / 10,
             current: this.current,

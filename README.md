@@ -16,8 +16,20 @@ tvoje; když kulička překročí čáru nad odpalovačem, hra končí.
 | Prohodit aktuální a další kuličku | šipka dolů nebo S | pravé tlačítko |
 | Zpět do menu | Esc |  |
 
-V menu se šipkami vybírá kolo. Dohrané kolo odemkne další a uloží rekord (v prohlížeči; v terminálu postup zatím vydrží
-jen do zavření hry).
+V menu se šipkami vybírá kolo. Dohrané kolo odemkne další. Když prohraješ, kola se znovu zamknou a začíná se od 1. kola.
+Odemčená kola a rekord se ukládají v prohlížeči; v terminálu zatím vydrží jen do zavření hry.
+
+## Skóre
+
+Body se sčítají přes celou hru, od startu až po prohru nebo poslední (10.) kolo.
+
+- **10 bodů** za každou prasklou kuličku, **20 bodů** za každou spadlou.
+- **Kombo:** zásahy, které po sobě něco rozbijí, se násobí (×2, ×3 … až ×5). Rána, která nic nerozbije, kombo ukončí.
+  Aktuální násobič je vpravo pod časem.
+- **Časový bonus:** každé kolo má časový limit (vpravo „CAS“). Každá sekunda, která zbude při vyčištění kola, je za 10
+  bodů. Po vypršení času se hraje dál, jen bez bonusu.
+
+Ukládá se nejlepší skóre celé hry (rekord).
 
 ## Spuštění
 
@@ -50,7 +62,9 @@ Příkazy `bun run ...` spouštěj ve složce hry.
 - `src/shot.js` - let kuličky, odrazy od stěn, pomocná čára míření.
 - `src/levels.js` - 10 úrovní obtížnosti (počet barev, hloubka, rychlost) a generátor, který z nich při každém startu
   kola postaví nové rozložení kuliček.
-- `src/progress.js` - odemčená kola a rekordy (localStorage).
+- `src/progress.js` - odemčená kola a rekord (localStorage).
+- `src/scoring.js` - počítání bodů, komba a časového bonusu.
+- `src/music.js` - znělky (začátek hry, dohrané kolo, prohra, konec hry).
 - `src/config.js` - rozměry a laditelné hodnoty.
 
 ## Helpful commands

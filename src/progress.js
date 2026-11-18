@@ -1,11 +1,11 @@
-// Kulostrel - saved progress: which levels are unlocked and the best score in each.
+// Kulostrel - saved progress: which levels are unlocked and the best score of a whole game.
 //
 // The browser keeps it in localStorage. Where there is no storage (a private window, or a terminal through blit-term),
 // progress lasts until the game closes; nothing breaks.
 
 const KEY = 'kulostrel.progress.v1';
 
-/** @typedef {{ unlocked: number, best: number[] }} ProgressData */
+/** @typedef {{ unlocked: number, top: number }} ProgressData */
 
 /**
  * @typedef {object} StorageLike
@@ -26,8 +26,8 @@ export class Progress {
     /** How many levels can be played (at least the first). */
     unlocked = 1;
 
-    /** @type {number[]} best score per level index */
-    best = [];
+    /** The best score of a whole game. */
+    top = 0;
 
     /** @type {StorageLike | null} */
     storage;
@@ -57,8 +57,8 @@ export class Progress {
                 this.unlocked = Math.max(1, Math.min(this.levelCount, /** @type {number} */ (data.unlocked)));
             }
 
-            if (Array.isArray(data.best)) {
-                this.best = data.best.slice(0, this.levelCount).map((n) => (Number.isFinite(n) && n > 0 ? n : 0));
+            if (Number.isFinite(data.top) && /** @type {number} */ (data.top) > 0) {
+                this.top = /** @type {number} */ (data.top);
             }
         } catch (error) {
             console.warn('[kulostrel] ignoring unreadable saved progress', error);
@@ -67,43 +67,42 @@ export class Progress {
 
     save() {
         try {
-            this.storage?.setItem(KEY, JSON.stringify({ unlocked: this.unlocked, best: this.best }));
+            this.storage?.setItem(KEY, JSON.stringify({ unlocked: this.unlocked, top: this.top }));
         } catch (error) {
             console.warn('[kulostrel] could not save progress', error);
         }
     }
 
     /**
-     * Record a cleared level: unlock the next one and keep the better score.
+     * A cleared level unlocks the next one.
      *
      * @param {number} index
-     * @param {number} score
-     * @returns {boolean} true when the score is a new best
      */
-    complete(index, score) {
-        const isBest = score > (this.best[index] ?? 0);
-
-        if (isBest) {
-            this.best[index] = score;
-        }
-
+    complete(index) {
         this.unlocked = Math.min(this.levelCount, Math.max(this.unlocked, index + 2));
-        this.save();
-
-        return isBest;
-    }
-
-    /** A lost game: lock every level but the first again. Best scores stay. */
-    restart() {
-        this.unlocked = 1;
         this.save();
     }
 
     /**
-     * @param {number} index
-     * @returns {number}
+     * Keep the game's score if it is the best so far.
+     *
+     * @param {number} total
+     * @returns {boolean} true when it is a new best
      */
-    bestOf(index) {
-        return this.best[index] ?? 0;
+    record(total) {
+        if (total <= this.top) {
+            return false;
+        }
+
+        this.top = total;
+        this.save();
+
+        return true;
+    }
+
+    /** A lost game: lock every level but the first again. The best score stays. */
+    restart() {
+        this.unlocked = 1;
+        this.save();
     }
 }
