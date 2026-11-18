@@ -7,7 +7,10 @@ které tím ztratí spojení se stropem, spadnou. Kuličky se celou dobu pomalu 
 rychleji. Rozložení kuliček se při každé hře generuje znovu. Vyčisti plochu a kolo je tvoje; když kulička překročí čáru
 nad odpalovačem, hra končí.
 
-![Kulostřel](docs/obrazky/hra.png) ![Kulostřel](docs/obrazky/specialni-kulicky.png)
+<p>
+  <img src="docs/obrazky/hra.png" alt="Kulostřel" width="49%">
+  <img src="docs/obrazky/specialni-kulicky.png" alt="Kulostřel" width="49%">
+</p>
 
 ## Kola
 
