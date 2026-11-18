@@ -490,10 +490,12 @@ class Game {
         this.renderBoard();
         this.renderLauncher();
         this.renderEffects();
-        this.renderHud();
 
+        // The end-of-level box is wider than the playfield, so the side panel steps aside for it.
         if (this.state === 'won' || this.state === 'lost') {
             this.renderMessage();
+        } else {
+            this.renderHud();
         }
     }
 
@@ -623,9 +625,9 @@ class Game {
         const hint = isWon ? (isLast ? 'MEZERNIK MENU' : 'MEZERNIK DAL') : 'MEZERNIK ZNOVU';
         const cx = SCREEN_W / 2;
 
-        // The screen is narrow, so the box spans the playfield and the side panel.
-        this.fillRect(6, 22, SCREEN_W - 12, 46, C_BG);
-        BT.drawRect(new Rect2i(6, 22, SCREEN_W - 12, 46), C_WALL);
+        // The screen is narrow, so the box spans the playfield and the side panel (render() hides the panel).
+        this.fillRect(4, 22, SCREEN_W - 8, 46, C_BG);
+        BT.drawRect(new Rect2i(4, 22, SCREEN_W - 8, 46), C_WALL);
         this.printCentered(title, cx, 26, isWon ? C_TEXT : C_DANGER);
         this.printCentered(detail, cx, 39, isWon && this.isNewBest ? C_GUIDE : C_DIM);
         this.printCentered(hint, cx, 52, C_DIM);
