@@ -110,6 +110,21 @@ const GRAVITY = 0.25;
 // 4 is a soft edge, half rim and half background, so the 6x6 ball reads as round rather than as a square.
 const BALL_PIXELS = ['.4114.', '413324', '132221', '122221', '412214', '.4114.'];
 
+// Marks drawn over a special ball, 6 x 8: two rows above the ball (for the bomb's fuse), then the ball's 6 x 6.
+// They are a second sprite rather than single pixels, because the WebGPU backend draws pixels and rectangles before
+// sprites whatever the call order. Letters are palette slots: w text white, k background, f fuse, s spark, g spark.
+const MARK_W = BALL;
+const MARK_H = BALL + 2;
+const MARKS = {
+    eye: ['......', '......', '......', '......', '..ww..', '...k..', '......', '......'],
+    stone: ['......', '......', '......', '......', '..k.k.', '...k..', '......', '......'],
+    rainbow: ['......', '......', '......', '......', '..w...', '...w..', '......', '......'],
+    fuse: ['.....s', '....f.', '......', '......', '......', '......', '......', '......'],
+    fuse2: ['.....g', '....f.', '......', '......', '......', '......', '......', '......'],
+};
+/** @type {(keyof typeof MARKS)[]} */
+const MARK_ORDER = ['eye', 'stone', 'rainbow', 'fuse', 'fuse2'];
+
 /** @typedef {{ x: number, y: number, vy: number, color: number, timer: number, falling: boolean }} Effect */
 
 /**
@@ -218,6 +233,10 @@ class Game {
     ballSheet = null;
     ballRect = new Rect2i(0, 0, BALL, BALL);
 
+    /** @type {SpriteSheet | null} the marks on special balls, side by side in MARK_ORDER */
+    markSheet = null;
+    markRect = new Rect2i(0, 0, MARK_W, MARK_H);
+
     /** @type {Record<string, AudioClip | null>} */
     sounds = { shoot: null, pop: null, drop: null, stick: null, boom: null, push: null };
 
@@ -267,6 +286,21 @@ class Game {
             }
         });
         this.ballSheet = SpriteSheet.fromIndexedPixels(BALL, BALL, pixels);
+
+        const slots = { w: C_TEXT, k: C_BG, f: C_LAUNCHER, s: C_DANGER, g: C_GUIDE };
+        const markW = MARK_W * MARK_ORDER.length;
+        const marks = new Uint8Array(markW * MARK_H);
+
+        MARK_ORDER.forEach((name, i) => {
+            MARKS[name].forEach((line, y) => {
+                for (let x = 0; x < MARK_W; x++) {
+                    const ch = /** @type {keyof typeof slots} */ (line[x]);
+
+                    marks[y * markW + i * MARK_W + x] = slots[ch] ?? 0;
+                }
+            });
+        });
+        this.markSheet = SpriteSheet.fromIndexedPixels(markW, MARK_H, marks);
 
         const seed = readSeed();
 
@@ -689,19 +723,26 @@ class Game {
             return;
         }
 
+        // A card or message replaces the game instead of covering it: on the WebGPU backend the engine draws sprites
+        // (the balls) after filled rectangles whatever the call order, so a box painted over the field let the balls
+        // show through.
+        if (this.state === 'intro') {
+            this.renderIntro();
+
+            return;
+        }
+
+        if (this.state === 'won' || this.state === 'lost') {
+            this.renderMessage();
+
+            return;
+        }
+
         this.renderField();
         this.renderBoard();
         this.renderLauncher();
         this.renderEffects();
-
-        // The boxes are wider than the playfield, so the side panel steps aside for them.
-        if (this.state === 'intro') {
-            this.renderIntro();
-        } else if (this.state === 'won' || this.state === 'lost') {
-            this.renderMessage();
-        } else {
-            this.renderHud();
-        }
+        this.renderHud();
     }
 
     renderField() {
@@ -902,12 +943,8 @@ class Game {
         }
     }
 
-    /**
-     * The box the cards and messages sit in. It covers the whole game: a see-through dim let the balls show, and in a
-     * terminal (which averages pixels) they stayed plainly visible.
-     */
+    /** The box the cards and messages sit in; render() draws nothing of the game behind it. */
     renderBox() {
-        this.fillRect(0, 0, SCREEN_W, SCREEN_H, C_BG);
         BT.drawRect(new Rect2i(4, 4, SCREEN_W - 8, 72), C_WALL);
     }
 
@@ -938,33 +975,26 @@ class Game {
         this.pos.set(left, top);
         BT.drawSprite(/** @type {SpriteSheet} */ (this.ballSheet), this.ballRect, this.pos, ballOffset(shown));
 
+        /** @type {keyof typeof MARKS | null} */
+        let mark = null;
+
         if (color === RAINBOW) {
-            this.pixel(left + 2, top + 2, C_TEXT);
-            this.pixel(left + 3, top + 3, C_TEXT);
+            mark = 'rainbow';
         } else if (color === BOMB) {
-            // A fuse with a spark.
-            this.pixel(left + 4, top - 1, C_LAUNCHER);
-            this.pixel(left + 5, top - 2, BT.ticks % 8 < 4 ? C_DANGER : C_GUIDE);
+            // A fuse with a blinking spark.
+            mark = BT.ticks % 8 < 4 ? 'fuse' : 'fuse2';
         } else if (color === STONE) {
-            this.pixel(left + 2, top + 2, C_BG);
-            this.pixel(left + 3, top + 3, C_BG);
-            this.pixel(left + 4, top + 2, C_BG);
+            mark = 'stone';
         } else if (isChameleon) {
             // An eye: white with a dark pupil.
-            this.pixel(left + 2, top + 2, C_TEXT);
-            this.pixel(left + 3, top + 2, C_TEXT);
-            this.pixel(left + 3, top + 3, C_BG);
+            mark = 'eye';
         }
-    }
 
-    /**
-     * @param {number} x
-     * @param {number} y
-     * @param {number} color
-     */
-    pixel(x, y, color) {
-        this.pos.set(x, y);
-        BT.drawPixel(this.pos, color);
+        if (mark) {
+            this.markRect.set(MARK_ORDER.indexOf(mark) * MARK_W, 0, MARK_W, MARK_H);
+            this.pos.set(left, top - 2);
+            BT.drawSprite(/** @type {SpriteSheet} */ (this.markSheet), this.markRect, this.pos, 0);
+        }
     }
 
     /**
