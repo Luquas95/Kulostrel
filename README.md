@@ -13,6 +13,10 @@ tvoje; když kulička překročí čáru nad odpalovačem, hra končí.
 | Mířit | šipky vlevo/vpravo nebo A/D (ťuknutí = malý krok, podržení = plynulé otáčení) | pohyb myší |
 | Vystřelit | mezerník, šipka nahoru nebo W | levé tlačítko |
 | Prohodit aktuální a další kuličku | šipka dolů nebo S | pravé tlačítko |
+| Zpět do menu | Esc |  |
+
+V menu se šipkami vybírá kolo. Dohrané kolo odemkne další a uloží rekord (v prohlížeči; v terminálu postup zatím vydrží
+jen do zavření hry).
 
 ## Spuštění
 
@@ -30,7 +34,8 @@ bun test       # testy herní logiky
 - `src/game.js` - herní smyčka: vstup, stavy hry, vykreslování.
 - `src/board.js` - mřížka kuliček (šestiúhelníkové rozložení, praskání skupin, padání kuliček).
 - `src/shot.js` - let kuličky, odrazy od stěn, pomocná čára míření.
-- `src/levels.js` - úrovně jako textové mapy.
+- `src/levels.js` - 10 úrovní jako textové mapy, obtížnost postupně roste.
+- `src/progress.js` - odemčená kola a rekordy (localStorage).
 - `src/config.js` - rozměry a laditelné hodnoty.
 
 ## Helpful commands
