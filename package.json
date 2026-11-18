@@ -1,0 +1,29 @@
+{
+  "name": "kulostrel",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "format": "biome format --write . && prettier --write \"**/*.{md,mdx,mdc,yml,yaml}\"",
+    "format:check": "biome format . && prettier --check \"**/*.{md,mdx,mdc,yml,yaml}\"",
+    "lint": "biome lint .",
+    "lint:fix": "biome lint --write .",
+    "term": "blit-term --status"
+  },
+  "dependencies": {
+    "blit386": "^1.8.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.7",
+    "@blit386/kit": "^1.8.0",
+    "blit386-term": "github:Luquas95/Blit386_ASCI",
+    "prettier": "^3.9.6",
+    "vite": "^8.1.5"
+  }
+}

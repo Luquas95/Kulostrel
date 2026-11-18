@@ -1,0 +1,19 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "kulostrel-dev",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": [
+        "x",
+        "vite",
+        "--port",
+        "5173",
+        "--strictPort",
+        "--no-open"
+      ],
+      "port": 5173,
+      "autoPort": false
+    }
+  ]
+}
