@@ -4,7 +4,8 @@ Logická střílečka kuliček v enginu [BLIT386](https://blit386.dev). Hraje se
 
 Zamiř odpalovačem a vystřel kuličku do shluku, který visí ze stropu. Tři a více kuliček stejné barvy prasknou; kuličky,
 které tím ztratí spojení se stropem, spadnou. Kuličky se celou dobu pomalu posouvají dolů, v každém kole o něco
-rychleji. Vyčisti plochu a kolo je tvoje; když kulička překročí čáru nad odpalovačem, hra končí.
+rychleji. Rozložení kuliček se při každé hře generuje znovu, další kola přidávají barvy a řady. Vyčisti plochu a kolo je
+tvoje; když kulička překročí čáru nad odpalovačem, hra končí.
 
 ## Ovládání
 
@@ -47,7 +48,8 @@ Příkazy `bun run ...` spouštěj ve složce hry.
 - `src/game.js` - herní smyčka: vstup, stavy hry, vykreslování.
 - `src/board.js` - mřížka kuliček (šestiúhelníkové rozložení, praskání skupin, padání kuliček).
 - `src/shot.js` - let kuličky, odrazy od stěn, pomocná čára míření.
-- `src/levels.js` - 10 úrovní jako textové mapy, obtížnost postupně roste.
+- `src/levels.js` - 10 úrovní obtížnosti (počet barev, hloubka, rychlost) a generátor, který z nich při každém startu
+  kola postaví nové rozložení kuliček.
 - `src/progress.js` - odemčená kola a rekordy (localStorage).
 - `src/config.js` - rozměry a laditelné hodnoty.
 
