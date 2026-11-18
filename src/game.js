@@ -1,7 +1,7 @@
 // Kulostrel - a ball shooter for BLIT386.
 //
 // Aim the launcher, shoot a ball into the cluster hanging from the ceiling. Three or more balls of the same color pop;
-// balls that lose their hold fall. Every few shots the ceiling moves down a row. Clear the board to win the level; let
+// balls that lose their hold fall. The balls creep down all the time. Clear the board to win the level; let
 // a ball cross the line above the launcher and the game is over.
 //
 // Controls
@@ -74,8 +74,8 @@ const POP_FRAMES = 8;
 /** Gravity for falling balls, pixels per update squared. */
 const GRAVITY = 0.25;
 
-// The ball sprite, 8 x 8. 0 transparent, 1 rim, 2 body, 3 highlight.
-const BALL_PIXELS = ['..1111..', '.122221.', '12332221', '12322221', '12222221', '12222221', '.122221.', '..1111..'];
+// The ball sprite, 6 x 6. 0 transparent, 1 rim, 2 body, 3 highlight.
+const BALL_PIXELS = ['.1111.', '133221', '132221', '122221', '122221', '.1111.'];
 
 /** @typedef {{ x: number, y: number, vy: number, color: number, timer: number, falling: boolean }} Effect */
 
@@ -136,7 +136,6 @@ class Game {
     shot = null;
 
     score = 0;
-    shotsLeft = 0;
 
     /** @type {Effect[]} */
     effects = [];
@@ -241,7 +240,6 @@ class Game {
         this.board.load(level.layout);
         this.score = 0;
         this.isNewBest = false;
-        this.shotsLeft = level.shotsPerDrop;
         this.state = 'aim';
         this.shot = null;
         this.effects = [];
@@ -273,6 +271,18 @@ class Game {
             this.effects = [];
 
             return;
+        }
+
+        if (this.state === 'aim' || this.state === 'fly') {
+            // The balls creep down all the time, at the level's pace.
+            this.board.descend(1 / (LEVELS[this.levelIndex].secondsPerRow * BT.targetFPS));
+
+            if (this.isOverLine()) {
+                this.state = 'lost';
+                this.shot = null;
+
+                return;
+            }
         }
 
         if (this.state === 'aim') {
@@ -416,13 +426,6 @@ class Game {
             return;
         }
 
-        this.shotsLeft -= 1;
-
-        if (this.shotsLeft <= 0) {
-            this.board.lower();
-            this.shotsLeft = LEVELS[this.levelIndex].shotsPerDrop;
-        }
-
         if (this.isOverLine()) {
             this.state = 'lost';
 
@@ -538,11 +541,11 @@ class Game {
 
         // A short barrel pointing where the shot goes.
         const rad = (this.aim * Math.PI) / 180;
-        const tipX = Math.floor(LAUNCH_X + Math.sin(rad) * 9);
-        const tipY = Math.floor(LAUNCH_Y - Math.cos(rad) * 9);
+        const tipX = Math.floor(LAUNCH_X + Math.sin(rad) * 7);
+        const tipY = Math.floor(LAUNCH_Y - Math.cos(rad) * 7);
 
         BT.drawLine(new Vector2i(LAUNCH_X, LAUNCH_Y), new Vector2i(tipX, tipY), C_LAUNCHER);
-        this.fillRect(LAUNCH_X - 7, LAUNCH_Y + 4, 14, 3, C_LAUNCHER);
+        this.fillRect(LAUNCH_X - 6, LAUNCH_Y + 4, 12, 3, C_LAUNCHER);
 
         if (this.shot) {
             this.drawBall(this.shot.x, this.shot.y, this.current);
@@ -560,18 +563,16 @@ class Game {
     }
 
     renderHud() {
-        const x = FIELD_X * 2 + FIELD_W + 3;
+        const x = FIELD_X * 2 + FIELD_W + 2;
 
         BT.systemPrint(new Vector2i(x, 2), C_DIM, 'KOLO');
         BT.systemPrint(new Vector2i(x, 14), C_TEXT, String(this.levelIndex + 1));
         BT.systemPrint(new Vector2i(x, 32), C_DIM, 'SKORE');
         BT.systemPrint(new Vector2i(x, 44), C_TEXT, String(this.score));
-        BT.systemPrint(new Vector2i(x, 62), C_DIM, 'STROP');
-        BT.systemPrint(new Vector2i(x, 74), C_TEXT, String(this.shotsLeft));
-        BT.systemPrint(new Vector2i(x, 92), C_DIM, 'DALSI');
+        BT.systemPrint(new Vector2i(x, 62), C_DIM, 'DALSI');
 
         if (this.state !== 'lost') {
-            this.drawBall(x + 14, 110, this.next);
+            this.drawBall(x + 14, 82, this.next);
         }
     }
 
@@ -582,35 +583,35 @@ class Game {
         for (let i = 0; i < BALL_COLORS.length; i++) {
             const bob = BT.isReducedMotionPreferred ? 0 : Math.round(Math.sin(BT.ticks / 12 + i) * 2);
 
-            this.drawBall(cx - 25 + i * 10, 14 + bob, i);
+            this.drawBall(cx - 20 + i * 8, 10 + bob, i);
         }
 
-        this.printCentered('KULOSTREL', cx, 26, C_TEXT);
+        this.printCentered('KULOSTREL', cx, 18, C_TEXT);
 
         const n = this.menuIndex;
         const level = LEVELS[n];
         const canLeft = n > 0;
         const canRight = n < this.progress.unlocked - 1;
 
-        this.printCentered(`KOLO ${n + 1}/${LEVELS.length}`, cx, 50, C_TEXT);
-        this.printCentered(level.name.toUpperCase(), cx, 64, C_DIM);
+        this.printCentered(`KOLO ${n + 1}/${LEVELS.length}`, cx, 38, C_TEXT);
+        this.printCentered(level.name.toUpperCase(), cx, 51, C_DIM);
 
         if (canLeft) {
-            BT.systemPrint(new Vector2i(18, 50), C_GUIDE, '<');
+            BT.systemPrint(new Vector2i(10, 38), C_GUIDE, '<');
         }
 
         if (canRight) {
-            BT.systemPrint(new Vector2i(SCREEN_W - 24, 50), C_GUIDE, '>');
+            BT.systemPrint(new Vector2i(SCREEN_W - 16, 38), C_GUIDE, '>');
         }
 
         const best = this.progress.bestOf(n);
 
         if (best > 0) {
-            this.printCentered(`REKORD ${best}`, cx, 78, C_DIM);
+            this.printCentered(`REKORD ${best}`, cx, 64, C_DIM);
         }
 
         if (Math.floor(BT.ticks / 30) % 2 === 0) {
-            this.printCentered('MEZERNIK = HRAT', cx, 100, C_TEXT);
+            this.printCentered('MEZERNIK = HRAT', cx, 80, C_TEXT);
         }
     }
 
@@ -620,13 +621,14 @@ class Game {
         const title = isWon ? (isLast ? 'VSE HOTOVO' : 'KOLO HOTOVO') : 'KONEC HRY';
         const detail = isWon && this.isNewBest ? 'NOVY REKORD' : `SKORE ${this.score}`;
         const hint = isWon ? (isLast ? 'MEZERNIK MENU' : 'MEZERNIK DAL') : 'MEZERNIK ZNOVU';
-        const cx = FIELD_X + FIELD_W / 2;
+        const cx = SCREEN_W / 2;
 
-        this.fillRect(FIELD_X + 6, 34, FIELD_W - 12, 48, C_BG);
-        BT.drawRect(new Rect2i(FIELD_X + 6, 34, FIELD_W - 12, 48), C_WALL);
-        this.printCentered(title, cx, 38, isWon ? C_TEXT : C_DANGER);
-        this.printCentered(detail, cx, 52, isWon && this.isNewBest ? C_GUIDE : C_DIM);
-        this.printCentered(hint, cx, 66, C_DIM);
+        // The screen is narrow, so the box spans the playfield and the side panel.
+        this.fillRect(6, 22, SCREEN_W - 12, 46, C_BG);
+        BT.drawRect(new Rect2i(6, 22, SCREEN_W - 12, 46), C_WALL);
+        this.printCentered(title, cx, 26, isWon ? C_TEXT : C_DANGER);
+        this.printCentered(detail, cx, 39, isWon && this.isNewBest ? C_GUIDE : C_DIM);
+        this.printCentered(hint, cx, 52, C_DIM);
     }
 
     /**
@@ -671,8 +673,7 @@ class Game {
             unlocked: this.progress.unlocked,
             menu: this.menuIndex + 1,
             score: this.score,
-            shotsLeft: this.shotsLeft,
-            drop: this.board.drop,
+            drop: Math.round(this.board.drop * 100) / 100,
             aim: Math.round(this.aim * 10) / 10,
             current: this.current,
             next: this.next,

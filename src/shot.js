@@ -81,7 +81,7 @@ export class Shot {
         }
 
         // Only rows near the ball can touch it.
-        const row = Math.round((this.y - FIELD_TOP - RADIUS) / ROW_H) - board.drop;
+        const row = Math.round((this.y - FIELD_TOP - RADIUS) / ROW_H - board.drop);
 
         for (let r = Math.max(0, row - 1); r <= row + 1 && r < board.cells.length; r++) {
             const cells = board.cells[r];

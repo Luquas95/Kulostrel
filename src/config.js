@@ -1,21 +1,22 @@
 // Kulostrel - shared sizes and tuning knobs.
 //
-// The screen is 160 x 120 pixels. In a terminal (blit-term) that is 160 x 60 character cells, which fits a normal
-// window without shrinking; in a browser the engine scales it up.
+// The screen is 128 x 96 pixels. In a terminal (blit-term) one character cell shows 1 x 2 pixels, so the game needs
+// 128 x 48 cells to show every pixel. A smaller terminal has to shrink the picture, which blurs it; 128 x 48 fits a
+// typical full-screen terminal. In a browser the engine scales it up.
 
 /** Screen width and height in pixels. */
-export const SCREEN_W = 160;
-export const SCREEN_H = 120;
+export const SCREEN_W = 128;
+export const SCREEN_H = 96;
 
 /** Ball diameter and radius in pixels. */
-export const BALL = 8;
+export const BALL = 6;
 export const RADIUS = BALL / 2;
 
 /** Balls in an even row. Odd rows are shifted right by half a ball and hold one ball less. */
 export const COLS = 14;
 
-/** Vertical distance between row centers. 8 * sqrt(3) / 2 rounded, so balls in a hex grid touch. */
-export const ROW_H = 7;
+/** Vertical distance between row centers. 6 * sqrt(3) / 2 rounded, so balls in a hex grid touch. */
+export const ROW_H = 5;
 
 /** The playfield: left wall at FIELD_X, right wall at FIELD_X + FIELD_W. */
 export const FIELD_X = 4;
@@ -25,11 +26,11 @@ export const FIELD_W = COLS * BALL;
 export const FIELD_TOP = 2;
 
 /** A ball whose bottom edge passes this line ends the game. */
-export const DEATH_Y = 102;
+export const DEATH_Y = 80;
 
 /** The launcher: where a shot starts (ball center). */
 export const LAUNCH_X = FIELD_X + FIELD_W / 2;
-export const LAUNCH_Y = 112;
+export const LAUNCH_Y = 88;
 
 /** How far the aim can tilt from straight up, in degrees. */
 export const AIM_LIMIT = 80;
@@ -38,7 +39,7 @@ export const AIM_LIMIT = 80;
 export const AIM_SPEED = 1.5;
 
 /** Shot speed in pixels per update (60 updates a second). */
-export const SHOT_SPEED = 3.5;
+export const SHOT_SPEED = 2.8;
 
 /**
  * Two balls touch when their centers are closer than this. Slightly less than a full diameter, so a shot can slip
