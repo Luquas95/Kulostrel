@@ -31,9 +31,12 @@ bun test       # testy herní logiky
 
 ### Hraní v terminálu
 
-Obraz hry má 128 × 96 pixelů a jeden znak terminálu ukazuje 1 × 2 pixely. Pro ostrý obraz proto terminál potřebuje aspoň
-**128 × 48 znaků** (zjistíš příkazem `stty size`, vypíše řádky a sloupce). Menší terminál musí obraz zmenšit a ten se
-pak rozmaže: zvětši okno nebo zmenši písmo. Když je terminál aspoň dvakrát větší (256 × 96), obraz se ostře zvětší.
+Obraz hry má 128 × 80 pixelů a jeden znak terminálu ukazuje 1 × 2 pixely. Pro ostrý obraz proto terminál potřebuje aspoň
+**128 sloupců a 40 řádků** (41 se stavovým řádkem; zjistíš příkazem `stty size`, vypíše řádky a sloupce). Menší terminál
+musí obraz zmenšit a ten se pak rozmaže: zvětši okno nebo zmenši písmo. Když je terminál aspoň dvakrát větší (256 × 80),
+obraz se ostře zvětší.
+
+Příkazy `bun run ...` spouštěj ve složce hry.
 
 - `bun run term -- --status` přidá stavový řádek (fps, velikost); zabere jeden řádek navíc.
 - `bun run term -- --scale nearest` zmenšuje bez rozmazání, ale vynechává pixely.
