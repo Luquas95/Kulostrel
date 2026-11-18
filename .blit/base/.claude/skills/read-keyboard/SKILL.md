@@ -1,0 +1,106 @@
+---
+name: read-keyboard
+description: >-
+  Read keyboard keys and face buttons in update(). Use for keyboard movement, jumping, menus, typed text, or remapping
+  keys, "press any key" screens (isAnyKeyPressed), including raw key codes like 'KeyW', the default key mapping (W, A,
+  S, D for player 0, arrow keys for player 1), and making the arrow keys steer player 0 in a one-player game
+  (keyboardLayout: 'single').
+---
+
+# Read the keyboard
+
+Read keys and face buttons in `update()`. For player 0, W, A, S, D already map to the D-pad and Space to `BTN_A`; the
+arrow keys belong to player 1 by default. A one-player game that wants the arrows too sets `keyboardLayout: 'single'`
+(see One-player game below).
+
+## When to use
+
+Use for keyboard movement, jumping, menus, typed text, or remapping keys.
+
+## Face buttons (work on keyboard and gamepad)
+
+```js
+update() {
+    if (BT.isDown(BT.BTN_RIGHT, 0)) this.x += 2; // held: movement
+    if (BT.isPressed(BT.BTN_A, 0)) this.jump(); // one frame: jump/fire/confirm
+    if (BT.isReleased(BT.BTN_A, 0)) this.release();
+}
+```
+
+Player number is `0` for a one-player game. Directions: `BT.BTN_LEFT/RIGHT/UP/DOWN`; actions: `BT.BTN_A/B/X/Y`.
+
+## One-player game: WASD and the arrow keys
+
+```js
+configure() {
+    return {
+        keyboardLayout: 'single', // player 0: WASD and arrows; player 1: IJKL (engine 1.8.0+)
+    };
+}
+```
+
+`'single'` also stops the arrow keys scrolling the page (unless you set `isCapturingKeyboardScroll: false`). The
+default, `'versus'`, keeps WASD for player 0 and the arrows for player 1 - right for a two-player keyboard game.
+
+## Raw keys by name
+
+Use the browser key code (`'KeyW'`, `'Space'`, `'ArrowUp'`, `'Enter'`):
+
+```js
+if (BT.isKeyDown('KeyW')) this.y -= 2; // held
+if (BT.isKeyPressed('Enter')) this.start(); // one frame
+if (BT.isKeyPressed('ArrowUp', 10)) this.menuUp(); // repeats every 10 ticks while held
+```
+
+## Any key (engine 1.8.0+)
+
+For a "press any key to start" screen or an idle check, ask about the whole keyboard instead of a named key:
+
+```js
+update() {
+    if (BT.isAnyKeyPressed()) this.startGame(); // any key went down this frame, even with another key held
+    if (BT.isAnyKeyReleased()) this.idleTimer = 0; // the LAST held key came up: everything is up now
+}
+```
+
+`BT.isAnyKeyPressed(10)` also repeats every 10 ticks while keys stay held. `isAnyKeyReleased` does not fire when one key
+comes up but another is still down; use `BT.isKeyReleased(code)` for per-key releases. Gamepad version:
+`BT.isAnyButtonPressed(player?)`, see `skills/read-gamepad/`.
+
+## Typed text
+
+```js
+this.name += BT.inputString; // characters typed this frame (a getter)
+```
+
+## Remap a face button
+
+```js
+BT.inputMap(0, BT.BTN_A, 'KeyZ', 'Space'); // player, button, one or more key codes
+BT.inputMap(0, BT.BTN_LEFT, 'KeyA', 'ArrowLeft'); // replaces the list, so keep 'KeyA' to keep WASD working
+BT.inputMapReset(); // back to the keyboardLayout's defaults
+```
+
+## Key calls
+
+- `BT.isKeyDown(code)` / `BT.isKeyPressed(code, repeat?)` / `BT.isKeyReleased(code)` - methods.
+- `BT.isAnyKeyDown()` / `BT.isAnyKeyPressed(repeat?)` / `BT.isAnyKeyReleased()` - methods, engine 1.8.0+ (whole
+  keyboard).
+- `BT.isDown(button, player)` / `BT.isPressed(...)` / `BT.isReleased(...)` - methods (face buttons).
+- `BT.inputString` - getter (typed characters).
+- `BT.inputMap(player, button, ...keys)` / `BT.inputMapReset()` - methods (players 0-1 only). `inputMapReset` restores
+  the active `keyboardLayout`'s tables (engine 1.8.0+), not always the WASD / arrows split.
+- `BT.DEFAULT_KEYBOARD_PLAYER1` / `BT.DEFAULT_KEYBOARD_PLAYER2` (`'versus'`) and `BT.DEFAULT_KEYBOARD_SINGLE_PLAYER1` /
+  `BT.DEFAULT_KEYBOARD_SINGLE_PLAYER2` (`'single'`, engine 1.8.0+) - the default key tables, read-only, for a controls
+  screen that lists the keys.
+
+## Notes
+
+- Read input in `update()`, not `render()` - presses, releases, and typed text are one-frame events that already reset
+  by the time `render()` runs, so checking them there can silently drop taps under fast input.
+- "Down" means held every frame; "Pressed" / "Released" is the single edge frame.
+- Arrow keys and Space scroll the host page by default. Set `isCapturingKeyboardScroll: true` in `configure()` when your
+  game maps those keys so the page does not move while the canvas is focused (`keyboardLayout: 'single'` turns it on for
+  you).
+
+See `docs/input.md`.

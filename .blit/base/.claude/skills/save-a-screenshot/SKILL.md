@@ -1,0 +1,111 @@
+---
+name: save-a-screenshot
+description:
+  Capture the rendered frame as a PNG, either downloading it or getting a Blob. Use for a screenshot button, a 'share my
+  creation' feature, or exporting generated pixel art.
+---
+
+# Save a screenshot
+
+Capture the rendered frame as a PNG - download it, or get a Blob to use yourself.
+
+## When to use
+
+Use for a screenshot button, a "share my creation" feature, or exporting generated pixel art.
+
+## Download a PNG
+
+```js
+async update() {
+    if (BT.isKeyPressed('KeyP')) {
+        await BT.downloadFrame('my-art.png'); // async; prompts a browser download; filename optional
+    }
+}
+```
+
+## Get a Blob (upload, preview, store)
+
+```js
+async takeShot() {
+    const blob = await BT.captureFrame(); // a PNG Blob, after the next render
+    const url = URL.createObjectURL(blob);
+    this.previewUrl = url;
+}
+```
+
+## Get an exact 1:1 frame (tests, agents, pixel art) - engine 1.7.1+
+
+By default the PNG matches `BT.outputSize`, which for a game with no `configure()` is `640x480` - every game pixel a 2x2
+block, plus any display-tier effects (scanlines, vignette). For the game's real pixels, one PNG pixel per logical pixel
+at `BT.displaySize`, pass `{ size: 'display' }`:
+
+```js
+const exact = await BT.captureFrame({ size: 'display' }); // 320x240 for the default game
+await BT.downloadFrame('exact.png', { size: 'display' });
+```
+
+Use this whenever you compare frames or read pixels: the PNG always matches `BT.displaySize` (whatever
+`drawingBufferSize` is set to), and the capture never collides with someone pressing F9 in the same frame. It leaves out
+display-tier effects, since those only exist in the upscaled buffer.
+
+## Capture the frame at a given time (engine 1.8.0+)
+
+To screenshot what the game shows at second 3.2 - for a thumbnail, a test, or to check an animation - wait until the
+engine is ready, seek there, then capture:
+
+```js
+while (!BT.isReady) {
+  await new Promise((r) => setTimeout(r, 16));
+}
+await BT.renderAt(3.2); // replays from the start and stops on tick 192
+const shot = await BT.captureFrame({ size: 'display' }); // the frame at 3.2 s
+BT.resume(); // optional: keep playing from there
+```
+
+`BT.isReady` is `false` until `init()` has finished and the game loop exists - poll it when you drive the page from
+outside (a screenshot tool, a play-testing harness). Inside `update()` / `render()` the engine is already ready.
+`renderAt` replays your game from the beginning on a fresh copy of your game class (a new `Game`, then `init()`), so the
+fields your class sets up start over by themselves. It only lands on the right frame if everything that moves is driven
+by `BT.timeSeconds`, `BT.ticks`, or `BT.random` - never `performance.now()` or `Date.now()` - and if variables outside
+the class (at the top of the file) are reset in `init()` too.
+
+## The built-in dev shortcut (engine 1.7.0+)
+
+While `npm run dev` is running, you do not need any code to grab a frame:
+
+- **F9** - copy the current frame to the clipboard, ready to paste into a chat or an issue.
+- **Shift+F9** - save it as a PNG, named with the date and time so repeated presses never overwrite each other.
+
+Both are dev-only: they follow `BT.isDevMode`, so a built game never binds them. If your game wants F9 for itself, turn
+them off in `configure()`:
+
+```js
+configure() {
+    return {
+        isFrameCaptureShortcutEnabled: false, // F9 and Shift+F9 are mine now
+    };
+}
+```
+
+Setting the flag wins in both directions - `true` keeps the shortcuts in a release build too. Leave it unset and dev
+mode decides. Either way, this is for you while you work; a screenshot _button_ your players can press is still the
+`BT.downloadFrame` / `BT.captureFrame` code above.
+
+## Key calls
+
+- `BT.downloadFrame(filename?, options?)` (method, async) - capture and download.
+- `BT.captureFrame(options?)` (method, async) - resolve to a PNG `Blob`.
+- `{ size: 'display' }` (options, engine 1.7.1+) - capture at logical `BT.displaySize` instead of `BT.outputSize`.
+- `BT.isReady` (getter, engine 1.8.0+) - `true` once init finished and the loop exists; wait for it before seeking from
+  outside the game.
+- `BT.renderAt(seconds, { from }?)` (method, async, engine 1.8.0+) - jump to a time and render that exact frame; then
+  `captureFrame`. `from: 'start'` (default) replays from tick 0 on a fresh game instance; `from: 'current'` steps on
+  from where the game is and refuses a time in the past. Works in a hidden or headless page.
+- `BT.resume()` (method, async, engine 1.8.0+) - restart the loop from the seeked frame.
+- `isFrameCaptureShortcutEnabled` (configure flag, engine 1.7.0+) - force the F9 / Shift+F9 shortcuts on or off.
+
+## Notes
+
+- Both are async - `await` them, or call from an async handler.
+- Capture happens after the next frame renders, so the latest draw is included.
+- Works on both the WebGPU and software backends.
