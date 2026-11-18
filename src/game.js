@@ -12,7 +12,7 @@
 //   Escape                    back to the title screen
 //
 // The title screen picks a level (Left / Right) among the unlocked ones. Clearing a level unlocks the next one and
-// keeps the best score (progress.js).
+// keeps the best score (progress.js). Losing a level ends the run: everything locks again and play restarts at level 1.
 //
 // The game logic lives in board.js (the grid) and shot.js (the flying ball); this file reads input, keeps the game
 // state and draws. Testing tip: `?seed=42` in the address gives the same ball order every run, and
@@ -295,8 +295,7 @@ class Game {
             this.board.descend(1 / (LEVELS[this.levelIndex].secondsPerRow * BT.targetFPS));
 
             if (this.isOverLine()) {
-                this.state = 'lost';
-                this.shot = null;
+                this.lose();
 
                 return;
             }
@@ -308,7 +307,7 @@ class Game {
             this.updateShot();
         } else if (this.isConfirmPressed()) {
             if (this.state === 'lost') {
-                this.startLevel(this.levelIndex);
+                this.startLevel(0);
             } else if (this.levelIndex + 1 < LEVELS.length) {
                 this.startLevel(this.levelIndex + 1);
             } else {
@@ -317,6 +316,14 @@ class Game {
                 this.state = 'title';
             }
         }
+    }
+
+    /** A lost level ends the run: the next game starts again from level 1. */
+    lose() {
+        this.state = 'lost';
+        this.shot = null;
+        this.progress.restart();
+        this.menuIndex = 0;
     }
 
     updateTitle() {
@@ -411,7 +418,7 @@ class Game {
 
         if (cell === null) {
             // Nowhere to stick: only possible with a full board. Treat it as a loss.
-            this.state = 'lost';
+            this.lose();
 
             return;
         }
@@ -444,7 +451,7 @@ class Game {
         }
 
         if (this.isOverLine()) {
-            this.state = 'lost';
+            this.lose();
 
             return;
         }
@@ -638,7 +645,7 @@ class Game {
         const isWon = this.state === 'won';
         const isLast = this.levelIndex + 1 >= LEVELS.length;
         const title = isWon ? (isLast ? 'VSE HOTOVO' : 'KOLO HOTOVO') : 'KONEC HRY';
-        const hint = isWon ? (isLast ? 'MEZERNIK MENU' : 'MEZERNIK DAL') : 'MEZERNIK ZNOVU';
+        const hint = isWon ? (isLast ? 'MEZERNIK MENU' : 'MEZERNIK DAL') : 'MEZERNIK OD KOLA 1';
         const cx = SCREEN_W / 2;
 
         // The screen is narrow, so the box spans the playfield and the side panel (render() hides the panel).
