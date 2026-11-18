@@ -42,7 +42,7 @@ export const JINGLES = {
             [64, 2],
         ],
     },
-    // The last level is cleared.
+    // Every tenth level is cleared.
     finale: {
         bpm: 180,
         notes: [

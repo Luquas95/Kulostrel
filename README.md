@@ -4,8 +4,22 @@ Logická střílečka kuliček v enginu [BLIT386](https://blit386.dev). Hraje se
 
 Zamiř odpalovačem a vystřel kuličku do shluku, který visí ze stropu. Tři a více kuliček stejné barvy prasknou; kuličky,
 které tím ztratí spojení se stropem, spadnou. Kuličky se celou dobu pomalu posouvají dolů, v každém kole o něco
-rychleji. Rozložení kuliček se při každé hře generuje znovu, další kola přidávají barvy a řady. Vyčisti plochu a kolo je
-tvoje; když kulička překročí čáru nad odpalovačem, hra končí.
+rychleji. Rozložení kuliček se při každé hře generuje znovu. Vyčisti plochu a kolo je tvoje; když kulička překročí čáru
+nad odpalovačem, hra končí.
+
+## Kola
+
+Kola nekončí, obtížnost roste pořád:
+
+- **1–10:** přibývají barvy (3 → 6) a řady, kuličky klesají rychleji.
+- **11–20:** speciální kuličky, vždy jedna nová, kterou před kolem představí karta:
+  - **11 kameleon** (má oko): po každé ráně změní barvu,
+  - **13 bomba** (tmavá s doutnákem): rozbije všechno kolem sebe, i kameny,
+  - **15 duhová kulička** (mění barvy): pasuje ke každé barvě, které se dotkne,
+  - **17 kámen** (šedý): nedá se rozbít, jen shodit nebo odpálit bombou.
+- **21 a dál:** navíc shora přibývají řady. Vpravo dole v poli je vidět, kolik jich v kole ještě přibude (`+3`), a tečky
+  ukazují, za kolik ran přijde další. Řad je v jednom kole nejvýš 6. Kola se střídají ve čtyřech typech (Tlak shora,
+  Kamenolom, Kameleoni, Ohnostroj) a s každým kolem jsou o kousek těžší, až k pevným hranicím.
 
 ## Ovládání
 
@@ -17,13 +31,14 @@ tvoje; když kulička překročí čáru nad odpalovačem, hra končí.
 | Zpět do menu | Esc |  |
 
 V menu se šipkami vybírá kolo. Dohrané kolo odemkne další. Když prohraješ, kola se znovu zamknou a začíná se od 1. kola.
-Odemčená kola a rekord se ukládají v prohlížeči; v terminálu zatím vydrží jen do zavření hry.
+Odemčená kola a rekord se ukládají v prohlížeči i v terminálu (blit-term je ukládá do
+`~/.local/state/blit-term/storage/`).
 
 ## Skóre
 
-Body se sčítají přes celou hru, od startu až po prohru nebo poslední (10.) kolo.
+Body se sčítají přes celou hru, od startu až do prohry.
 
-- **10 bodů** za každou prasklou kuličku, **20 bodů** za každou spadlou.
+- **10 bodů** za každou prasklou (i bombou odpálenou) kuličku, **20 bodů** za každou spadlou.
 - **Kombo:** zásahy, které po sobě něco rozbijí, se násobí (×2, ×3 … až ×5). Rána, která nic nerozbije, kombo ukončí.
   Aktuální násobič je vpravo pod časem.
 - **Časový bonus:** každé kolo má časový limit (vpravo „CAS“). Každá sekunda, která zbude při vyčištění kola, je za 10
@@ -58,13 +73,13 @@ Příkazy `bun run ...` spouštěj ve složce hry.
 ## Struktura
 
 - `src/game.js` - herní smyčka: vstup, stavy hry, vykreslování.
-- `src/board.js` - mřížka kuliček (šestiúhelníkové rozložení, praskání skupin, padání kuliček).
+- `src/board.js` - mřížka kuliček (šestiúhelníkové rozložení, praskání skupin, padání kuliček, speciální kuličky,
+  přidávání řad shora).
 - `src/shot.js` - let kuličky, odrazy od stěn, pomocná čára míření.
-- `src/levels.js` - 10 úrovní obtížnosti (počet barev, hloubka, rychlost) a generátor, který z nich při každém startu
-  kola postaví nové rozložení kuliček.
+- `src/levels.js` - nastavení obtížnosti pro libovolné kolo (`levelAt`) a generátor rozložení.
 - `src/progress.js` - odemčená kola a rekord (localStorage).
 - `src/scoring.js` - počítání bodů, komba a časového bonusu.
-- `src/music.js` - znělky (začátek hry, dohrané kolo, prohra, konec hry).
+- `src/music.js` - znělky (začátek hry, dohrané kolo, každé desáté kolo, prohra).
 - `src/config.js` - rozměry a laditelné hodnoty.
 
 ## Helpful commands

@@ -11,6 +11,10 @@
 //   Mouse                     aim at the pointer
 //   Escape                    back to the title screen
 //
+// Levels never end (levels.js): from level 11 special balls join one at a time, each introduced on a card (chameleons,
+// bombs, rainbow balls, stones), and from level 21 rows are pushed in from the top too. The field shows how many rows
+// are still to come (+n) and the dots under it how many shots are left until the next one.
+//
 // The title screen picks a level (Left / Right) among the unlocked ones. Clearing a level unlocks the next one; the
 // best score of a whole game is saved (progress.js). Losing a level ends the game: everything locks again and play
 // restarts at level 1. Scoring (points, combo, time bonus) lives in scoring.js, jingles in music.js.
@@ -20,7 +24,7 @@
 // `BT.testState()` in the browser console shows the state as plain numbers.
 
 import { AudioClip, BT, bootstrap, Color32, Rect2i, SpriteSheet, Vector2i } from 'blit386';
-import { Board, cellCenter, EMPTY } from './board.js';
+import { Board, EMPTY, STONE } from './board.js';
 import {
     AIM_LIMIT,
     AIM_SPEED,
@@ -36,7 +40,7 @@ import {
     SCREEN_H,
     SCREEN_W,
 } from './config.js';
-import { generateLayout, LEVELS } from './levels.js';
+import { generateLayout, generatePushRow, levelAt } from './levels.js';
 import { frequency, JINGLES, JinglePlayer } from './music.js';
 import { Progress } from './progress.js';
 import { Scoring } from './scoring.js';
@@ -65,8 +69,32 @@ const BALL_COLORS = [
     [170, 80, 215], // 4 purple
     [60, 205, 210], // 5 cyan
 ];
-// A white ball, used for the flash when balls pop.
-const FLASH = BALL_COLORS.length;
+// Balls that are not one of the colors. They follow the colors in the palette; STONE (9) comes from board.js.
+const FLASH = 6; // white, for the flash when balls pop
+const BOMB = 7;
+const RAINBOW = 8;
+const EXTRA_COLORS = [
+    [240, 240, 250], // 6 flash
+    [70, 70, 90], // 7 bomb
+    [240, 240, 250], // 8 rainbow (drawn in changing colors; this slot is unused)
+    [150, 145, 135], // 9 stone
+];
+
+/** Any level number can be unlocked; this only keeps the saved number sane. */
+const LEVEL_LIMIT = 9999;
+
+/**
+ * What the card before a level says when it brings something new: the ball to show, a name, up to three lines.
+ *
+ * @type {Record<import('./levels.js').Intro, { ball: number, name: string, lines: string[] }>}
+ */
+const INTROS = {
+    chameleon: { ball: -1, name: 'KAMELEON', lines: ['PO KAZDE RANE', 'ZMENI BARVU.', 'POZNAS HO PO OKU.'] },
+    bomb: { ball: BOMB, name: 'BOMBA', lines: ['ROZBIJE VSECHNO', 'KOLEM SEBE,', 'I KAMENY.'] },
+    rainbow: { ball: RAINBOW, name: 'DUHOVA KULICKA', lines: ['PASUJE KE KAZDE', 'BARVE, KTERE SE', 'DOTKNE.'] },
+    stone: { ball: STONE, name: 'KAMEN', lines: ['NEDA SE ROZBIT.', 'SHOD HO, NEBO', 'ODPAL BOMBOU.'] },
+    push: { ball: -2, name: 'TLAK SHORA', lines: ['PRIBYVAJI RADY.', '+3: KOLIK JESTE,', 'TECKY: RAN DO DALSI'] },
+};
 
 /** How long a key must be held before aiming turns continuously (ticks). Longer than a legacy terminal tap. */
 const AIM_HOLD_DELAY = 36;
@@ -129,11 +157,23 @@ class Game {
     board = new Board();
     levelIndex = 0;
 
-    /** @type {'title' | 'aim' | 'fly' | 'won' | 'lost'} */
+    /** @type {'title' | 'intro' | 'aim' | 'fly' | 'won' | 'lost'} */
     state = 'title';
 
     /** Saved progress; created in init() so storage is only touched once the page runs. */
-    progress = new Progress(LEVELS.length, null);
+    progress = new Progress(LEVEL_LIMIT, null);
+
+    /** The current level's setting. */
+    level = levelAt(0);
+
+    /** Rows still to be pushed in from the top in this level. */
+    pushesLeft = 0;
+
+    /** Shots until the next row comes in. */
+    shotsToPush = 0;
+
+    /** Pixels the board is still drawn above its place, so a pushed row slides in. */
+    pushAnim = 0;
 
     /** The level picked on the title screen. */
     menuIndex = 0;
@@ -183,7 +223,7 @@ class Game {
     ballRect = new Rect2i(0, 0, BALL, BALL);
 
     /** @type {Record<string, AudioClip | null>} */
-    sounds = { shoot: null, pop: null, drop: null, stick: null };
+    sounds = { shoot: null, pop: null, drop: null, stick: null, boom: null, push: null };
 
     // Reused every frame so render() does not allocate.
     pos = new Vector2i(0, 0);
@@ -211,7 +251,7 @@ class Game {
         palette.set(C_DANGER, new Color32(230, 70, 70));
         palette.set(C_LAUNCHER, new Color32(170, 180, 215));
 
-        [...BALL_COLORS, [240, 240, 250]].forEach(([r, g, b], i) => {
+        [...BALL_COLORS, ...EXTRA_COLORS].forEach(([r, g, b], i) => {
             const base = new Color32(r, g, b);
             const slot = BALL_SLOTS + i * 4;
 
@@ -251,7 +291,7 @@ class Game {
 
         await this.loadSounds();
 
-        this.progress = new Progress(LEVELS.length);
+        this.progress = new Progress(LEVEL_LIMIT);
         this.menuIndex = this.progress.unlocked - 1;
         this.state = 'title';
 
@@ -265,6 +305,8 @@ class Game {
             this.sounds.stick = await AudioClip.synth(BT.synthPreset.hit(2));
             this.sounds.pop = await AudioClip.synth(BT.synthPreset.pickup(3));
             this.sounds.drop = await AudioClip.synth(BT.synthPreset.pickup(7));
+            this.sounds.boom = await AudioClip.synth(BT.synthPreset.explosion(4));
+            this.sounds.push = await AudioClip.synth(BT.synthPreset.hit(9));
 
             for (const jingle of Object.values(JINGLES)) {
                 const beat = 60 / jingle.bpm;
@@ -312,7 +354,7 @@ class Game {
      * @param {boolean} isNewGame true to start counting the score from zero
      */
     startLevel(index, isNewGame) {
-        const level = LEVELS[index];
+        const level = levelAt(index);
 
         if (isNewGame) {
             this.scoring.reset();
@@ -320,17 +362,22 @@ class Game {
         }
 
         this.scoring.startLevel();
+        this.level = level;
         this.levelIndex = index;
+        this.pushesLeft = level.pushRows;
+        this.shotsToPush = level.pushEvery;
+        this.pushAnim = 0;
         this.levelTicks = 0;
         this.bonus = 0;
         this.board.load(generateLayout(level, () => BT.random.next()));
         this.isNewBest = false;
-        this.state = 'aim';
+        // A level that brings something new first shows its card; the clock waits for it.
+        this.state = level.intro ? 'intro' : 'aim';
         this.shot = null;
         this.effects = [];
         this.aim = 0;
-        this.current = this.pickColor();
-        this.next = this.pickColor();
+        this.current = this.pickBall();
+        this.next = this.pickBall();
     }
 
     /** @returns {number} a color that is still on the board, so the level can always be finished */
@@ -340,14 +387,30 @@ class Game {
         return colors.length > 0 ? BT.random.pick(colors) : 0;
     }
 
+    /** @returns {number} the ball to hand out next: now and then a bomb or a rainbow ball, else a color */
+    pickBall() {
+        const r = BT.random.next();
+
+        if (r < this.level.bombs) {
+            return BOMB;
+        }
+
+        if (r < this.level.bombs + this.level.rainbows) {
+            return RAINBOW;
+        }
+
+        return this.pickColor();
+    }
+
     /** @returns {number} whole seconds left on the level's clock */
     secondsLeft() {
-        return Math.max(0, Math.ceil(LEVELS[this.levelIndex].seconds - this.levelTicks / BT.targetFPS));
+        return Math.max(0, Math.ceil(this.level.seconds - this.levelTicks / BT.targetFPS));
     }
 
     update() {
         this.updateEffects();
         this.jingle.update();
+        this.pushAnim = Math.max(0, this.pushAnim - 0.5);
 
         if (this.state === 'title') {
             this.updateTitle();
@@ -365,11 +428,19 @@ class Game {
             return;
         }
 
+        if (this.state === 'intro') {
+            if (this.isConfirmPressed()) {
+                this.state = 'aim';
+            }
+
+            return;
+        }
+
         if (this.state === 'aim' || this.state === 'fly') {
             this.levelTicks += 1;
 
             // The balls creep down all the time, at the level's pace.
-            this.board.descend(1 / (LEVELS[this.levelIndex].secondsPerRow * BT.targetFPS));
+            this.board.descend(1 / (this.level.secondsPerRow * BT.targetFPS));
 
             if (this.isOverLine()) {
                 this.lose();
@@ -385,12 +456,8 @@ class Game {
         } else if (this.isConfirmPressed()) {
             if (this.state === 'lost') {
                 this.startLevel(0, true);
-            } else if (this.levelIndex + 1 < LEVELS.length) {
-                this.startLevel(this.levelIndex + 1, false);
             } else {
-                // The last level is done: back to the title screen.
-                this.menuIndex = this.levelIndex;
-                this.state = 'title';
+                this.startLevel(this.levelIndex + 1, false);
             }
         }
     }
@@ -502,7 +569,7 @@ class Game {
             return;
         }
 
-        const { popped, dropped } = this.board.place(cell, this.current);
+        const { popped, dropped } = this.placeCurrent(cell);
 
         for (const { cell: c, color } of popped) {
             this.addEffect(c.row, c.col, color, false);
@@ -514,7 +581,9 @@ class Game {
 
         this.scoring.shot(popped.length, dropped.length);
 
-        if (dropped.length > 0) {
+        if (this.current === BOMB) {
+            this.play('boom');
+        } else if (dropped.length > 0) {
             this.play('drop');
         } else if (popped.length > 0) {
             this.play('pop');
@@ -523,7 +592,8 @@ class Game {
         }
 
         if (this.board.isEmpty()) {
-            const isLast = this.levelIndex + 1 >= LEVELS.length;
+            // Every tenth level gets the big fanfare.
+            const isLast = (this.levelIndex + 1) % 10 === 0;
 
             this.state = 'won';
             this.bonus = this.scoring.clear(this.secondsLeft());
@@ -534,6 +604,9 @@ class Game {
             return;
         }
 
+        this.board.shiftChameleons(this.board.colorsLeft());
+        this.countPush();
+
         if (this.isOverLine()) {
             this.lose();
 
@@ -542,22 +615,59 @@ class Game {
 
         this.current = this.next;
 
-        // The next ball must be a color that is still on the board.
+        // A colored ball must be a color that is still on the board.
         const colors = this.board.colorsLeft();
 
-        if (!colors.includes(this.current)) {
+        if (this.current < FLASH && !colors.includes(this.current)) {
             this.current = this.pickColor();
         }
 
-        this.next = this.pickColor();
+        this.next = this.pickBall();
         this.state = 'aim';
+    }
+
+    /**
+     * Stick the ball in hand to the board and resolve it.
+     *
+     * @param {import('./board.js').Cell} cell
+     * @returns {import('./board.js').PlaceResult}
+     */
+    placeCurrent(cell) {
+        if (this.current === BOMB) {
+            return this.board.placeBomb(cell);
+        }
+
+        if (this.current === RAINBOW) {
+            return this.board.placeRainbow(cell, this.pickColor());
+        }
+
+        return this.board.place(cell, this.current);
+    }
+
+    /** One shot closer to the next pushed row; push it in when it is due. */
+    countPush() {
+        if (this.pushesLeft === 0) {
+            return;
+        }
+
+        this.shotsToPush -= 1;
+
+        if (this.shotsToPush > 0) {
+            return;
+        }
+
+        this.board.push(generatePushRow(this.board.nextTopWidth(), this.board.colorsLeft(), () => BT.random.next()));
+        this.pushesLeft -= 1;
+        this.shotsToPush = this.level.pushEvery;
+        this.pushAnim = ROW_H;
+        this.play('push');
     }
 
     /** @returns {boolean} true when the lowest ball reaches the line above the launcher */
     isOverLine() {
         const row = this.board.lowestRow();
 
-        return row >= 0 && cellCenter(row, 0, this.board.drop).y + RADIUS > DEATH_Y;
+        return row >= 0 && this.board.center(row, 0).y + RADIUS > DEATH_Y;
     }
 
     /**
@@ -567,7 +677,7 @@ class Game {
      * @param {boolean} falling
      */
     addEffect(row, col, color, falling) {
-        const p = cellCenter(row, col, this.board.drop);
+        const p = this.board.center(row, col);
 
         this.effects.push({ x: p.x, y: p.y, vy: falling ? -1 : 0, color, timer: POP_FRAMES, falling });
     }
@@ -599,8 +709,10 @@ class Game {
         this.renderLauncher();
         this.renderEffects();
 
-        // The end-of-level box is wider than the playfield, so the side panel steps aside for it.
-        if (this.state === 'won' || this.state === 'lost') {
+        // The boxes are wider than the playfield, so the side panel steps aside for them.
+        if (this.state === 'intro') {
+            this.renderIntro();
+        } else if (this.state === 'won' || this.state === 'lost') {
             this.renderMessage();
         } else {
             this.renderHud();
@@ -617,7 +729,7 @@ class Game {
 
         // The line the balls must not cross. It blinks when the lowest ball is close.
         const row = this.board.lowestRow();
-        const isClose = row >= 0 && cellCenter(row, 0, this.board.drop).y + RADIUS + 2 * ROW_H > DEATH_Y;
+        const isClose = row >= 0 && this.board.center(row, 0).y + RADIUS + 2 * ROW_H > DEATH_Y;
         const color = isClose && Math.floor(BT.ticks / 15) % 2 === 0 ? C_DANGER : C_WALL;
 
         for (let x = FIELD_X; x < FIELD_X + FIELD_W; x += 4) {
@@ -626,16 +738,16 @@ class Game {
     }
 
     renderBoard() {
-        const { cells, drop } = this.board;
+        const { cells } = this.board;
 
         for (let row = 0; row < cells.length; row++) {
             for (let col = 0; col < cells[row].length; col++) {
                 const color = cells[row][col];
 
                 if (color !== EMPTY) {
-                    const p = cellCenter(row, col, drop);
+                    const p = this.board.center(row, col);
 
-                    this.drawBall(p.x, p.y, color);
+                    this.drawBall(p.x, p.y - this.pushAnim, color, this.board.chameleon[row][col]);
                 }
             }
         }
@@ -659,7 +771,7 @@ class Game {
 
         if (this.shot) {
             this.drawBall(this.shot.x, this.shot.y, this.current);
-        } else if (this.state === 'aim') {
+        } else if (this.state === 'aim' || this.state === 'intro') {
             this.drawBall(LAUNCH_X, LAUNCH_Y, this.current);
         }
     }
@@ -673,8 +785,7 @@ class Game {
     }
 
     renderHud() {
-        const x = FIELD_X * 2 + FIELD_W + 2;
-
+        const x = FIELD_X * 2 + FIELD_W + 1;
         const left = this.secondsLeft();
 
         BT.systemPrint(new Vector2i(x, 1), C_DIM, 'KOLO');
@@ -691,6 +802,24 @@ class Game {
 
         // The next ball waits beside the launcher.
         this.drawBall(LAUNCH_X - 16, LAUNCH_Y + 2, this.next);
+        this.renderPushes();
+    }
+
+    /** Bottom right of the field: +n rows still to come, and a dot for every shot until the next one. */
+    renderPushes() {
+        if (this.pushesLeft === 0) {
+            return;
+        }
+
+        const x = FIELD_X + FIELD_W - 26;
+        // The last shot before a row comes in, the counter blinks.
+        const isDue = this.shotsToPush === 1 && Math.floor(BT.ticks / 10) % 2 === 0;
+
+        BT.systemPrint(new Vector2i(x, 67), isDue ? C_TEXT : C_DANGER, `+${this.pushesLeft}`);
+
+        for (let i = 0; i < this.shotsToPush; i++) {
+            this.fillRect(x + 1 + i * 3, 77, 2, 2, C_GUIDE);
+        }
     }
 
     renderTitle() {
@@ -706,11 +835,11 @@ class Game {
         this.printCentered('KULOSTREL', cx, 13, C_TEXT);
 
         const n = this.menuIndex;
-        const level = LEVELS[n];
+        const level = levelAt(n);
         const canLeft = n > 0;
         const canRight = n < this.progress.unlocked - 1;
 
-        this.printCentered(`KOLO ${n + 1}/${LEVELS.length}`, cx, 29, C_TEXT);
+        this.printCentered(`KOLO ${n + 1}`, cx, 29, C_TEXT);
         this.printCentered(level.name.toUpperCase(), cx, 41, C_DIM);
 
         if (canLeft) {
@@ -732,16 +861,11 @@ class Game {
 
     renderMessage() {
         const isWon = this.state === 'won';
-        const isLast = this.levelIndex + 1 >= LEVELS.length;
-        const title = isWon ? (isLast ? 'VSE HOTOVO' : 'KOLO HOTOVO') : 'KONEC HRY';
-        const hint = isWon ? (isLast ? 'MEZERNIK MENU' : 'MEZERNIK DAL') : 'MEZERNIK OD KOLA 1';
+        const title = isWon ? 'KOLO HOTOVO' : 'KONEC HRY';
+        const hint = isWon ? 'MEZERNIK DAL' : 'MEZERNIK OD KOLA 1';
         const cx = SCREEN_W / 2;
 
-        // Dim the whole game, then a solid box on top (render() hides the side panel).
-        this.pos.set(0, 0);
-        BT.drawSprite(/** @type {SpriteSheet} */ (this.dimSheet), this.screenRect, this.pos, 0);
-        this.fillRect(4, 4, SCREEN_W - 8, 72, C_BG);
-        BT.drawRect(new Rect2i(4, 4, SCREEN_W - 8, 72), C_WALL);
+        this.renderBox();
         this.printCentered(title, cx, 6, isWon ? C_TEXT : C_DANGER);
 
         let y = 18;
@@ -764,6 +888,43 @@ class Game {
         this.printCentered(hint, cx, 63, C_DIM);
     }
 
+    /** The card before a level that brings something new. */
+    renderIntro() {
+        const intro = INTROS[/** @type {import('./levels.js').Intro} */ (this.level.intro)];
+        const cx = SCREEN_W / 2;
+
+        this.renderBox();
+        this.printCentered(`KOLO ${this.levelIndex + 1}: NOVINKA`, cx, 6, C_DIM);
+
+        // The ball itself: a chameleon shows its changing colors, the push card a pushed row.
+        if (intro.ball === -2) {
+            for (let i = 0; i < 5; i++) {
+                this.drawBall(cx - 12 + i * 6, 19, i);
+            }
+        } else if (intro.ball === -1) {
+            this.drawBall(cx, 19, Math.floor(BT.ticks / 30) % BALL_COLORS.length, true);
+        } else {
+            this.drawBall(cx, 19, intro.ball);
+        }
+
+        this.printCentered(intro.name, cx, 26, C_TEXT);
+        intro.lines.forEach((line, i) => {
+            this.printCentered(line, cx, 37 + i * 9, C_DIM);
+        });
+
+        if (Math.floor(BT.ticks / 30) % 2 === 0) {
+            this.printCentered('MEZERNIK = HRAT', cx, 66, C_GUIDE);
+        }
+    }
+
+    /** The dimmed game and the solid box the cards and messages sit in. */
+    renderBox() {
+        this.pos.set(0, 0);
+        BT.drawSprite(/** @type {SpriteSheet} */ (this.dimSheet), this.screenRect, this.pos, 0);
+        this.fillRect(4, 4, SCREEN_W - 8, 72, C_BG);
+        BT.drawRect(new Rect2i(4, 4, SCREEN_W - 8, 72), C_WALL);
+    }
+
     /**
      * @param {string} text
      * @param {number} cx horizontal center
@@ -780,10 +941,44 @@ class Game {
      * @param {number} x center
      * @param {number} y center
      * @param {number} color
+     * @param {boolean} [isChameleon]
      */
-    drawBall(x, y, color) {
-        this.pos.set(Math.floor(x - RADIUS), Math.floor(y - RADIUS));
-        BT.drawSprite(/** @type {SpriteSheet} */ (this.ballSheet), this.ballRect, this.pos, ballOffset(color));
+    drawBall(x, y, color, isChameleon = false) {
+        // A rainbow ball runs through all the colors.
+        const shown = color === RAINBOW ? Math.floor(BT.ticks / 5) % BALL_COLORS.length : color;
+        const left = Math.floor(x - RADIUS);
+        const top = Math.floor(y - RADIUS);
+
+        this.pos.set(left, top);
+        BT.drawSprite(/** @type {SpriteSheet} */ (this.ballSheet), this.ballRect, this.pos, ballOffset(shown));
+
+        if (color === RAINBOW) {
+            this.pixel(left + 2, top + 2, C_TEXT);
+            this.pixel(left + 3, top + 3, C_TEXT);
+        } else if (color === BOMB) {
+            // A fuse with a spark.
+            this.pixel(left + 4, top - 1, C_LAUNCHER);
+            this.pixel(left + 5, top - 2, BT.ticks % 8 < 4 ? C_DANGER : C_GUIDE);
+        } else if (color === STONE) {
+            this.pixel(left + 2, top + 2, C_BG);
+            this.pixel(left + 3, top + 3, C_BG);
+            this.pixel(left + 4, top + 2, C_BG);
+        } else if (isChameleon) {
+            // An eye: white with a dark pupil.
+            this.pixel(left + 2, top + 2, C_TEXT);
+            this.pixel(left + 3, top + 2, C_TEXT);
+            this.pixel(left + 3, top + 3, C_BG);
+        }
+    }
+
+    /**
+     * @param {number} x
+     * @param {number} y
+     * @param {number} color
+     */
+    pixel(x, y, color) {
+        this.pos.set(x, y);
+        BT.drawPixel(this.pos, color);
     }
 
     /**
@@ -806,6 +1001,8 @@ class Game {
             unlocked: this.progress.unlocked,
             menu: this.menuIndex + 1,
             score: this.scoring.total,
+            pushesLeft: this.pushesLeft,
+            shotsToPush: this.shotsToPush,
             combo: this.scoring.combo,
             secondsLeft: this.secondsLeft(),
             drop: Math.round(this.board.drop * 100) / 100,

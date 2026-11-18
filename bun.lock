@@ -115,7 +115,7 @@
 
     "blit386": ["blit386@1.8.0", "", {}, "sha512-OH6N0oanuHn271nR8GbFVKf15tqeik21jMGjZ6/k+85MYJ8k5/4EV3v2cGtf0n3UcMZZLzk4nmKAhGE1Hl37nQ=="],
 
-    "blit386-term": ["blit386-term@github:Luquas95/Blit386_ASCI#2401852", { "dependencies": { "@napi-rs/canvas": "^0.1.100", "node-web-audio-api": "^2.2.0", "webgpu": "^0.3.10" }, "peerDependencies": { "blit386": ">=1.7.0" }, "bin": { "blit-term": "./bin/blit-term.js" } }, "Luquas95-Blit386_ASCI-2401852", "sha512-e3Ro6QC1fxWWt4fWFWI5ubJVr2nzjb6COVtZDHlJ+MoTOVaDO6+2Fq41ndEuZBomQkqeG+D7iJ7QB+CPYgt34g=="],
+    "blit386-term": ["blit386-term@github:Luquas95/Blit386_ASCI#688737b", { "dependencies": { "@napi-rs/canvas": "^0.1.100", "node-web-audio-api": "^2.2.0", "webgpu": "^0.3.10" }, "peerDependencies": { "blit386": ">=1.7.0" }, "bin": { "blit-term": "./bin/blit-term.js" } }, "Luquas95-Blit386_ASCI-688737b", "sha512-CAZ5wHphzUUEMDLpwsloqIJ5fiQ7J0SjTkbUJh3hO0KT0F5ywMfIlyDmlFYiJ7uXtSRdSyaLo/JbmHcWztbt8w=="],
 
     "caller": ["caller@1.1.0", "", {}, "sha512-n+21IZC3j06YpCWaxmUy5AnVqhmCIM2bQtqQyy00HJlmStRt6kwDX5F9Z97pqwAB+G/tgSz6q/kUBbNyQzIubw=="],
 

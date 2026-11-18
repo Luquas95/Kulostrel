@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { Board, cellCenter, EMPTY, neighbors, rowWidth } from '../src/board.js';
-import { BALL, COLS, MAX_ROWS } from '../src/config.js';
+import { Board, cellCenter, EMPTY, neighbors, rowWidth, STONE } from '../src/board.js';
+import { BALL, COLS, MAX_ROWS, ROW_H } from '../src/config.js';
 
 describe('grid shape', () => {
     test('even rows are full width, odd rows one less', () => {
@@ -113,5 +113,109 @@ describe('Board', () => {
         expect(b.lowestRow()).toBe(-1);
         b.load(['0', ' 0', '0']);
         expect(b.lowestRow()).toBe(2);
+    });
+});
+
+describe('special balls', () => {
+    test('a pushed row moves every ball one row down and keeps it in place across', () => {
+        const b = new Board();
+
+        b.load(['0 1 2', ' 3 4']);
+
+        const before = b.center(1, 0);
+
+        b.push(new Array(b.nextTopWidth()).fill(5));
+
+        expect(b.cells[0]).toHaveLength(COLS - 1);
+        expect(b.get(1, 0)).toBe(0);
+        expect(b.get(2, 0)).toBe(3);
+
+        const after = b.center(2, 0);
+
+        expect(after.x).toBe(before.x);
+        expect(after.y).toBe(before.y + ROW_H);
+        expect(b.floating()).toEqual([]);
+    });
+
+    test('after a push, neighbors and groups still follow the shifted rows', () => {
+        const b = new Board();
+
+        b.load(['0 0']);
+        b.push(new Array(b.nextTopWidth()).fill(1));
+        // Row 1 is now the old full row and row 0 the new shifted one; a red under the two reds pops all three.
+        const result = b.place({ row: 2, col: 0 }, 0);
+
+        expect(result.popped).toHaveLength(3);
+    });
+
+    test('chameleons take the next color after every shot', () => {
+        const b = new Board();
+
+        b.load(['a 1 2']);
+        expect(b.isChameleon(0, 0)).toBe(true);
+        b.shiftChameleons([0, 1, 2]);
+        expect(b.get(0, 0)).toBe(1);
+        b.shiftChameleons([0, 1, 2]);
+        b.shiftChameleons([0, 1, 2]);
+        expect(b.get(0, 0)).toBe(0);
+        expect(b.get(0, 1)).toBe(1);
+    });
+
+    test('a chameleon pops with its current color and loses its flag', () => {
+        const b = new Board();
+
+        b.load(['a 0']);
+        b.place({ row: 0, col: 2 }, 0);
+        expect(b.isEmpty()).toBe(true);
+        expect(b.isChameleon(0, 0)).toBe(false);
+    });
+
+    test('stones never pop and are no color to aim for, but fall with what holds them', () => {
+        const b = new Board();
+
+        b.load(['0 0', ' x']);
+        expect(b.colorsLeft()).toEqual([0]);
+        expect(b.group(1, 0)).toEqual([]);
+
+        const result = b.place({ row: 0, col: 2 }, 0);
+
+        expect(result.dropped.map((d) => d.color)).toEqual([STONE]);
+        expect(b.isEmpty()).toBe(true);
+    });
+
+    test('a bomb blows away two rings around it, stones included', () => {
+        const b = new Board();
+
+        b.load(['0 1 2 3 4 5 0 1', ' x x x x x x x', '1 2 3 4 5 0 1 2']);
+
+        const { popped } = b.placeBomb({ row: 3, col: 3 });
+        const hit = popped.map((p) => `${p.cell.row},${p.cell.col}`);
+
+        expect(hit).toContain('2,3');
+        expect(hit).toContain('1,2');
+        expect(hit).not.toContain('0,3');
+        expect(popped.some((p) => p.color === STONE)).toBe(true);
+    });
+
+    test('a rainbow ball pops every color it completes', () => {
+        const b = new Board();
+
+        // Two reds on the left, two greens on the right of the gap at (0, 2).
+        b.load(['0 0 . 2 2']);
+
+        const { popped } = b.placeRainbow({ row: 0, col: 2 }, 3);
+
+        expect(popped).toHaveLength(5);
+        expect(b.isEmpty()).toBe(true);
+    });
+
+    test('a rainbow ball that completes nothing takes a color it touches, or the fallback', () => {
+        const b = new Board();
+
+        b.load(['0 . 2']);
+        b.placeRainbow({ row: 0, col: 1 }, 3);
+        expect(b.get(0, 1)).toBe(0);
+        b.placeRainbow({ row: 0, col: 6 }, 3);
+        expect(b.get(0, 6)).toBe(3);
     });
 });

@@ -4,7 +4,7 @@
 // bounces off the side walls, and stops when it touches the ceiling or another ball.
 
 import { FIELD_TOP, FIELD_W, FIELD_X, HIT_DIST, RADIUS, ROW_H, SHOT_SPEED } from './config.js';
-import { cellCenter, EMPTY } from './board.js';
+import { EMPTY } from './board.js';
 
 /** Largest distance the ball moves in one step, in pixels. */
 const STEP = 1;
@@ -91,7 +91,7 @@ export class Shot {
                     continue;
                 }
 
-                const p = cellCenter(r, c, board.drop);
+                const p = board.center(r, c);
 
                 if ((p.x - this.x) ** 2 + (p.y - this.y) ** 2 < HIT_DIST * HIT_DIST) {
                     return true;
