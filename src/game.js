@@ -9,6 +9,10 @@
 //   Space, Up (or W), click   shoot
 //   Down (or S)               swap the current and the next ball
 //   Mouse                     aim at the pointer
+//   Escape                    back to the title screen
+//
+// The title screen picks a level (Left / Right) among the unlocked ones. Clearing a level unlocks the next one and
+// keeps the best score (progress.js).
 //
 // The game logic lives in board.js (the grid) and shot.js (the flying ball); this file reads input, keeps the game
 // state and draws. Testing tip: `?seed=42` in the address gives the same ball order every run, and
@@ -34,6 +38,7 @@ import {
     SCREEN_W,
 } from './config.js';
 import { LEVELS } from './levels.js';
+import { Progress } from './progress.js';
 import { Shot, tracePath } from './shot.js';
 
 // Palette slots for the scene.
@@ -107,8 +112,17 @@ class Game {
     board = new Board();
     levelIndex = 0;
 
-    /** @type {'aim' | 'fly' | 'won' | 'lost'} */
-    state = 'aim';
+    /** @type {'title' | 'aim' | 'fly' | 'won' | 'lost'} */
+    state = 'title';
+
+    /** Saved progress; created in init() so storage is only touched once the page runs. */
+    progress = new Progress(LEVELS.length, null);
+
+    /** The level picked on the title screen. */
+    menuIndex = 0;
+
+    /** True when the level just cleared beat the saved best score. */
+    isNewBest = false;
 
     /** Degrees from straight up, positive to the right. */
     aim = 0;
@@ -190,7 +204,10 @@ class Game {
         }
 
         await this.loadSounds();
-        this.startLevel(0);
+
+        this.progress = new Progress(LEVELS.length);
+        this.menuIndex = this.progress.unlocked - 1;
+        this.state = 'title';
 
         return true;
     }
@@ -222,6 +239,8 @@ class Game {
 
         this.levelIndex = index;
         this.board.load(level.layout);
+        this.score = 0;
+        this.isNewBest = false;
         this.shotsLeft = level.shotsPerDrop;
         this.state = 'aim';
         this.shot = null;
@@ -241,17 +260,52 @@ class Game {
     update() {
         this.updateEffects();
 
+        if (this.state === 'title') {
+            this.updateTitle();
+
+            return;
+        }
+
+        // Escape leaves a level for the title screen at any time.
+        if (BT.isKeyPressed('Escape')) {
+            this.menuIndex = this.levelIndex;
+            this.state = 'title';
+            this.effects = [];
+
+            return;
+        }
+
         if (this.state === 'aim') {
             this.updateAim();
         } else if (this.state === 'fly') {
             this.updateShot();
         } else if (this.isConfirmPressed()) {
-            // Won or lost: start over. Level progression comes with the level select.
             if (this.state === 'lost') {
-                this.score = 0;
+                this.startLevel(this.levelIndex);
+            } else if (this.levelIndex + 1 < LEVELS.length) {
+                this.startLevel(this.levelIndex + 1);
+            } else {
+                // The last level is done: back to the title screen.
+                this.menuIndex = this.levelIndex;
+                this.state = 'title';
             }
+        }
+    }
 
-            this.startLevel(this.state === 'won' ? (this.levelIndex + 1) % LEVELS.length : this.levelIndex);
+    updateTitle() {
+        const last = this.progress.unlocked - 1;
+
+        if (BT.isPressed(BT.BTN_LEFT, 0)) {
+            this.menuIndex = Math.max(0, this.menuIndex - 1);
+        }
+
+        if (BT.isPressed(BT.BTN_RIGHT, 0)) {
+            this.menuIndex = Math.min(last, this.menuIndex + 1);
+        }
+
+        if (this.isConfirmPressed()) {
+            // The press is consumed this update; the first shot needs a new one.
+            this.startLevel(this.menuIndex);
         }
     }
 
@@ -357,6 +411,7 @@ class Game {
 
         if (this.board.isEmpty()) {
             this.state = 'won';
+            this.isNewBest = this.progress.complete(this.levelIndex, this.score);
 
             return;
         }
@@ -421,6 +476,13 @@ class Game {
 
     render() {
         BT.clear(C_BG);
+
+        if (this.state === 'title') {
+            this.renderTitle();
+
+            return;
+        }
+
         this.renderField();
         this.renderBoard();
         this.renderLauncher();
@@ -513,17 +575,70 @@ class Game {
         }
     }
 
-    renderMessage() {
-        const title = this.state === 'won' ? 'KOLO HOTOVO' : 'KONEC HRY';
-        const hint = 'MEZERNIK';
-        const cx = FIELD_X + FIELD_W / 2;
-        const t = BT.systemPrintMeasure(title);
-        const h = BT.systemPrintMeasure(hint);
+    renderTitle() {
+        const cx = SCREEN_W / 2;
 
-        this.fillRect(FIELD_X + 8, 40, FIELD_W - 16, 34, C_BG);
-        BT.drawRect(new Rect2i(FIELD_X + 8, 40, FIELD_W - 16, 34), C_WALL);
-        BT.systemPrint(new Vector2i(Math.floor(cx - t.x / 2), 44), this.state === 'won' ? C_TEXT : C_DANGER, title);
-        BT.systemPrint(new Vector2i(Math.floor(cx - h.x / 2), 58), C_DIM, hint);
+        // A row of balls in every color, gently bobbing, as a header.
+        for (let i = 0; i < BALL_COLORS.length; i++) {
+            const bob = BT.isReducedMotionPreferred ? 0 : Math.round(Math.sin(BT.ticks / 12 + i) * 2);
+
+            this.drawBall(cx - 25 + i * 10, 14 + bob, i);
+        }
+
+        this.printCentered('KULOSTREL', cx, 26, C_TEXT);
+
+        const n = this.menuIndex;
+        const level = LEVELS[n];
+        const canLeft = n > 0;
+        const canRight = n < this.progress.unlocked - 1;
+
+        this.printCentered(`KOLO ${n + 1}/${LEVELS.length}`, cx, 50, C_TEXT);
+        this.printCentered(level.name.toUpperCase(), cx, 64, C_DIM);
+
+        if (canLeft) {
+            BT.systemPrint(new Vector2i(18, 50), C_GUIDE, '<');
+        }
+
+        if (canRight) {
+            BT.systemPrint(new Vector2i(SCREEN_W - 24, 50), C_GUIDE, '>');
+        }
+
+        const best = this.progress.bestOf(n);
+
+        if (best > 0) {
+            this.printCentered(`REKORD ${best}`, cx, 78, C_DIM);
+        }
+
+        if (Math.floor(BT.ticks / 30) % 2 === 0) {
+            this.printCentered('MEZERNIK = HRAT', cx, 100, C_TEXT);
+        }
+    }
+
+    renderMessage() {
+        const isWon = this.state === 'won';
+        const isLast = this.levelIndex + 1 >= LEVELS.length;
+        const title = isWon ? (isLast ? 'VSE HOTOVO' : 'KOLO HOTOVO') : 'KONEC HRY';
+        const detail = isWon && this.isNewBest ? 'NOVY REKORD' : `SKORE ${this.score}`;
+        const hint = isWon ? (isLast ? 'MEZERNIK MENU' : 'MEZERNIK DAL') : 'MEZERNIK ZNOVU';
+        const cx = FIELD_X + FIELD_W / 2;
+
+        this.fillRect(FIELD_X + 6, 34, FIELD_W - 12, 48, C_BG);
+        BT.drawRect(new Rect2i(FIELD_X + 6, 34, FIELD_W - 12, 48), C_WALL);
+        this.printCentered(title, cx, 38, isWon ? C_TEXT : C_DANGER);
+        this.printCentered(detail, cx, 52, isWon && this.isNewBest ? C_GUIDE : C_DIM);
+        this.printCentered(hint, cx, 66, C_DIM);
+    }
+
+    /**
+     * @param {string} text
+     * @param {number} cx horizontal center
+     * @param {number} y top
+     * @param {number} color
+     */
+    printCentered(text, cx, y, color) {
+        const size = BT.systemPrintMeasure(text);
+
+        BT.systemPrint(new Vector2i(Math.floor(cx - size.x / 2), y), color, text);
     }
 
     /**
@@ -553,6 +668,8 @@ class Game {
         return {
             state: this.state,
             level: this.levelIndex + 1,
+            unlocked: this.progress.unlocked,
+            menu: this.menuIndex + 1,
             score: this.score,
             shotsLeft: this.shotsLeft,
             drop: this.board.drop,
