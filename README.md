@@ -7,18 +7,7 @@ které tím ztratí spojení se stropem, spadnou. Kuličky se celou dobu pomalu 
 rychleji. Rozložení kuliček se při každé hře generuje znovu. Vyčisti plochu a kolo je tvoje; když kulička překročí čáru
 nad odpalovačem, hra končí.
 
-## Obrázky
-
-|  |  |
-| --- | --- |
-| ![Menu s výběrem kola a rekordem](docs/obrazky/menu.png) | ![Míření s odrazem od stěny](docs/obrazky/hra.png) |
-| Menu: výběr kola a rekord | Míření: pomocná čára ukazuje i odraz od stěny |
-| ![Karta s novinkou před 13. kolem](docs/obrazky/novinka.png) | ![Kameleoni a kameny v 19. kole](docs/obrazky/specialni-kulicky.png) |
-| Karta s novinkou (13. kolo, bomba) | Kameleoni (s okem) a kameny v 19. kole |
-| ![Řady shora ve 22. kole](docs/obrazky/rady-shora.png) |  |
-| Od 21. kola přibývají řady shora (`+2` a tečky vpravo dole) |  |
-
-Obrázky jsou vykreslené přímo z hry (128 × 80 pixelů, zvětšené 4×); v terminálu vypadá hra stejně.
+![Kulostřel](docs/obrazky/hra.png) ![Kulostřel](docs/obrazky/specialni-kulicky.png)
 
 ## Kola
 
