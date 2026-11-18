@@ -197,10 +197,6 @@ class Game {
         (/** @type {AudioClip} */ clip) => BT.soundPlay(clip, { volume: 0.5 }),
     );
 
-    /** @type {SpriteSheet | null} a checkerboard that dims the game behind the end-of-level box */
-    dimSheet = null;
-    screenRect = new Rect2i(0, 0, SCREEN_W, SCREEN_H);
-
     /** Degrees from straight up, positive to the right. */
     aim = 0;
     aimHeld = 0;
@@ -271,17 +267,6 @@ class Game {
             }
         });
         this.ballSheet = SpriteSheet.fromIndexedPixels(BALL, BALL, pixels);
-
-        const dim = new Uint8Array(SCREEN_W * SCREEN_H);
-
-        for (let i = 0; i < dim.length; i++) {
-            const x = i % SCREEN_W;
-            const y = Math.floor(i / SCREEN_W);
-
-            dim[i] = (x + y) % 2 === 0 ? C_BG : 0;
-        }
-
-        this.dimSheet = SpriteSheet.fromIndexedPixels(SCREEN_W, SCREEN_H, dim);
 
         const seed = readSeed();
 
@@ -917,11 +902,12 @@ class Game {
         }
     }
 
-    /** The dimmed game and the solid box the cards and messages sit in. */
+    /**
+     * The box the cards and messages sit in. It covers the whole game: a see-through dim let the balls show, and in a
+     * terminal (which averages pixels) they stayed plainly visible.
+     */
     renderBox() {
-        this.pos.set(0, 0);
-        BT.drawSprite(/** @type {SpriteSheet} */ (this.dimSheet), this.screenRect, this.pos, 0);
-        this.fillRect(4, 4, SCREEN_W - 8, 72, C_BG);
+        this.fillRect(0, 0, SCREEN_W, SCREEN_H, C_BG);
         BT.drawRect(new Rect2i(4, 4, SCREEN_W - 8, 72), C_WALL);
     }
 
