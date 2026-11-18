@@ -93,6 +93,12 @@ export class Progress {
         return isBest;
     }
 
+    /** A lost game: lock every level but the first again. Best scores stay. */
+    restart() {
+        this.unlocked = 1;
+        this.save();
+    }
+
     /**
      * @param {number} index
      * @returns {number}

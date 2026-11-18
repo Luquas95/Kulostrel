@@ -34,6 +34,20 @@ describe('Progress', () => {
         expect(again.bestOf(0)).toBe(300);
     });
 
+    test('a lost game locks everything again but keeps the best scores', () => {
+        const storage = memoryStorage();
+        const p = new Progress(10, storage);
+
+        p.complete(0, 300);
+        p.complete(1, 400);
+        p.restart();
+
+        const again = new Progress(10, storage);
+
+        expect(again.unlocked).toBe(1);
+        expect(again.bestOf(1)).toBe(400);
+    });
+
     test('never unlocks past the last level', () => {
         const p = new Progress(3, memoryStorage());
 

@@ -12,7 +12,7 @@
 //   Escape                    back to the title screen
 //
 // The title screen picks a level (Left / Right) among the unlocked ones. Clearing a level unlocks the next one and
-// keeps the best score (progress.js).
+// keeps the best score (progress.js). Losing a level ends the run: everything locks again and play restarts at level 1.
 //
 // The game logic lives in board.js (the grid) and shot.js (the flying ball); this file reads input, keeps the game
 // state and draws. Testing tip: `?seed=42` in the address gives the same ball order every run, and
@@ -37,7 +37,7 @@ import {
     SCREEN_H,
     SCREEN_W,
 } from './config.js';
-import { LEVELS } from './levels.js';
+import { generateLayout, LEVELS } from './levels.js';
 import { Progress } from './progress.js';
 import { Shot, tracePath } from './shot.js';
 
@@ -51,8 +51,11 @@ const C_GUIDE = 6;
 const C_DANGER = 7;
 const C_LAUNCHER = 8;
 
-// Ball colors: each takes four slots starting at BALL_SLOTS (rim, body, highlight, unused).
+// Ball colors: each takes four slots starting at BALL_SLOTS (rim, body, highlight, soft edge).
 const BALL_SLOTS = 16;
+
+/** The play field's color; ball edges blend into it. */
+const FIELD_RGB = new Color32(24, 28, 50);
 const BALL_COLORS = [
     [220, 50, 60], // 0 red
     [245, 200, 50], // 1 yellow
@@ -75,7 +78,8 @@ const POP_FRAMES = 8;
 const GRAVITY = 0.25;
 
 // The ball sprite, 6 x 6. 0 transparent, 1 rim, 2 body, 3 highlight.
-const BALL_PIXELS = ['.1111.', '133221', '132221', '122221', '122221', '.1111.'];
+// 4 is a soft edge, half rim and half background, so the 6x6 ball reads as round rather than as a square.
+const BALL_PIXELS = ['.4114.', '413324', '132221', '122221', '412214', '.4114.'];
 
 /** @typedef {{ x: number, y: number, vy: number, color: number, timer: number, falling: boolean }} Effect */
 
@@ -95,6 +99,18 @@ function readSeed() {
     const seed = raw === null ? Number.NaN : Number(raw);
 
     return Number.isSafeInteger(seed) ? seed : null;
+}
+
+/**
+ * @param {Color32} a
+ * @param {Color32} b
+ * @param {number} t 0 = a, 1 = b
+ * @returns {Color32}
+ */
+function mix(a, b, t) {
+    const k = (/** @type {number} */ x, /** @type {number} */ y) => Math.round(x * (1 - t) + y * t);
+
+    return new Color32(k(a.r, b.r), k(a.g, b.g), k(a.b, b.b));
 }
 
 /**
@@ -168,7 +184,7 @@ class Game {
         const palette = BT.paletteCreate(64);
 
         palette.set(C_BG, new Color32(14, 16, 30));
-        palette.set(C_FIELD, new Color32(24, 28, 50));
+        palette.set(C_FIELD, FIELD_RGB);
         palette.set(C_WALL, new Color32(80, 90, 130));
         palette.set(C_TEXT, new Color32(235, 240, 255));
         palette.set(C_DIM, new Color32(130, 140, 175));
@@ -183,6 +199,7 @@ class Game {
             palette.set(slot, shade(base, 0.55));
             palette.set(slot + 1, base);
             palette.set(slot + 2, shade(base, 1.45));
+            palette.set(slot + 3, mix(shade(base, 0.55), FIELD_RGB, 0.5));
         });
 
         BT.paletteSet(palette);
@@ -237,7 +254,7 @@ class Game {
         const level = LEVELS[index];
 
         this.levelIndex = index;
-        this.board.load(level.layout);
+        this.board.load(generateLayout(level, () => BT.random.next()));
         this.score = 0;
         this.isNewBest = false;
         this.state = 'aim';
@@ -278,8 +295,7 @@ class Game {
             this.board.descend(1 / (LEVELS[this.levelIndex].secondsPerRow * BT.targetFPS));
 
             if (this.isOverLine()) {
-                this.state = 'lost';
-                this.shot = null;
+                this.lose();
 
                 return;
             }
@@ -291,7 +307,7 @@ class Game {
             this.updateShot();
         } else if (this.isConfirmPressed()) {
             if (this.state === 'lost') {
-                this.startLevel(this.levelIndex);
+                this.startLevel(0);
             } else if (this.levelIndex + 1 < LEVELS.length) {
                 this.startLevel(this.levelIndex + 1);
             } else {
@@ -300,6 +316,14 @@ class Game {
                 this.state = 'title';
             }
         }
+    }
+
+    /** A lost level ends the run: the next game starts again from level 1. */
+    lose() {
+        this.state = 'lost';
+        this.shot = null;
+        this.progress.restart();
+        this.menuIndex = 0;
     }
 
     updateTitle() {
@@ -394,7 +418,7 @@ class Game {
 
         if (cell === null) {
             // Nowhere to stick: only possible with a full board. Treat it as a loss.
-            this.state = 'lost';
+            this.lose();
 
             return;
         }
@@ -427,7 +451,7 @@ class Game {
         }
 
         if (this.isOverLine()) {
-            this.state = 'lost';
+            this.lose();
 
             return;
         }
@@ -621,7 +645,7 @@ class Game {
         const isWon = this.state === 'won';
         const isLast = this.levelIndex + 1 >= LEVELS.length;
         const title = isWon ? (isLast ? 'VSE HOTOVO' : 'KOLO HOTOVO') : 'KONEC HRY';
-        const hint = isWon ? (isLast ? 'MEZERNIK MENU' : 'MEZERNIK DAL') : 'MEZERNIK ZNOVU';
+        const hint = isWon ? (isLast ? 'MEZERNIK MENU' : 'MEZERNIK DAL') : 'MEZERNIK OD KOLA 1';
         const cx = SCREEN_W / 2;
 
         // The screen is narrow, so the box spans the playfield and the side panel (render() hides the panel).
