@@ -569,12 +569,12 @@ class Game {
 
         BT.systemPrint(new Vector2i(x, 2), C_DIM, 'KOLO');
         BT.systemPrint(new Vector2i(x, 14), C_TEXT, String(this.levelIndex + 1));
-        BT.systemPrint(new Vector2i(x, 32), C_DIM, 'SKORE');
-        BT.systemPrint(new Vector2i(x, 44), C_TEXT, String(this.score));
-        BT.systemPrint(new Vector2i(x, 62), C_DIM, 'DALSI');
+        BT.systemPrint(new Vector2i(x, 28), C_DIM, 'SKORE');
+        BT.systemPrint(new Vector2i(x, 40), C_TEXT, String(this.score));
+        BT.systemPrint(new Vector2i(x, 54), C_DIM, 'DALSI');
 
         if (this.state !== 'lost') {
-            this.drawBall(x + 14, 82, this.next);
+            this.drawBall(x + 14, 72, this.next);
         }
     }
 
@@ -585,35 +585,35 @@ class Game {
         for (let i = 0; i < BALL_COLORS.length; i++) {
             const bob = BT.isReducedMotionPreferred ? 0 : Math.round(Math.sin(BT.ticks / 12 + i) * 2);
 
-            this.drawBall(cx - 20 + i * 8, 10 + bob, i);
+            this.drawBall(cx - 20 + i * 8, 7 + bob, i);
         }
 
-        this.printCentered('KULOSTREL', cx, 18, C_TEXT);
+        this.printCentered('KULOSTREL', cx, 13, C_TEXT);
 
         const n = this.menuIndex;
         const level = LEVELS[n];
         const canLeft = n > 0;
         const canRight = n < this.progress.unlocked - 1;
 
-        this.printCentered(`KOLO ${n + 1}/${LEVELS.length}`, cx, 38, C_TEXT);
-        this.printCentered(level.name.toUpperCase(), cx, 51, C_DIM);
+        this.printCentered(`KOLO ${n + 1}/${LEVELS.length}`, cx, 29, C_TEXT);
+        this.printCentered(level.name.toUpperCase(), cx, 41, C_DIM);
 
         if (canLeft) {
-            BT.systemPrint(new Vector2i(10, 38), C_GUIDE, '<');
+            BT.systemPrint(new Vector2i(10, 29), C_GUIDE, '<');
         }
 
         if (canRight) {
-            BT.systemPrint(new Vector2i(SCREEN_W - 16, 38), C_GUIDE, '>');
+            BT.systemPrint(new Vector2i(SCREEN_W - 16, 29), C_GUIDE, '>');
         }
 
         const best = this.progress.bestOf(n);
 
         if (best > 0) {
-            this.printCentered(`REKORD ${best}`, cx, 64, C_DIM);
+            this.printCentered(`REKORD ${best}`, cx, 53, C_DIM);
         }
 
         if (Math.floor(BT.ticks / 30) % 2 === 0) {
-            this.printCentered('MEZERNIK = HRAT', cx, 80, C_TEXT);
+            this.printCentered('MEZERNIK = HRAT', cx, 66, C_TEXT);
         }
     }
 
@@ -626,11 +626,11 @@ class Game {
         const cx = SCREEN_W / 2;
 
         // The screen is narrow, so the box spans the playfield and the side panel (render() hides the panel).
-        this.fillRect(4, 22, SCREEN_W - 8, 46, C_BG);
-        BT.drawRect(new Rect2i(4, 22, SCREEN_W - 8, 46), C_WALL);
-        this.printCentered(title, cx, 26, isWon ? C_TEXT : C_DANGER);
-        this.printCentered(detail, cx, 39, isWon && this.isNewBest ? C_GUIDE : C_DIM);
-        this.printCentered(hint, cx, 52, C_DIM);
+        this.fillRect(4, 14, SCREEN_W - 8, 46, C_BG);
+        BT.drawRect(new Rect2i(4, 14, SCREEN_W - 8, 46), C_WALL);
+        this.printCentered(title, cx, 18, isWon ? C_TEXT : C_DANGER);
+        this.printCentered(detail, cx, 31, isWon && this.isNewBest ? C_GUIDE : C_DIM);
+        this.printCentered(hint, cx, 44, C_DIM);
     }
 
     /**

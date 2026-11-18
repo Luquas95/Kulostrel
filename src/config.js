@@ -1,12 +1,12 @@
 // Kulostrel - shared sizes and tuning knobs.
 //
-// The screen is 128 x 96 pixels. In a terminal (blit-term) one character cell shows 1 x 2 pixels, so the game needs
-// 128 x 48 cells to show every pixel. A smaller terminal has to shrink the picture, which blurs it; 128 x 48 fits a
-// typical full-screen terminal. In a browser the engine scales it up.
+// The screen is 128 x 80 pixels. In a terminal (blit-term) one character cell shows 1 x 2 pixels, so the game needs
+// 128 x 40 cells to show every pixel (41 with the status line). A smaller terminal has to shrink the picture, which
+// blurs it; 40 rows fit most terminal windows. In a browser the engine scales it up.
 
 /** Screen width and height in pixels. */
 export const SCREEN_W = 128;
-export const SCREEN_H = 96;
+export const SCREEN_H = 80;
 
 /** Ball diameter and radius in pixels. */
 export const BALL = 6;
@@ -26,11 +26,11 @@ export const FIELD_W = COLS * BALL;
 export const FIELD_TOP = 2;
 
 /** A ball whose bottom edge passes this line ends the game. */
-export const DEATH_Y = 80;
+export const DEATH_Y = 67;
 
 /** The launcher: where a shot starts (ball center). */
 export const LAUNCH_X = FIELD_X + FIELD_W / 2;
-export const LAUNCH_Y = 88;
+export const LAUNCH_Y = 74;
 
 /** How far the aim can tilt from straight up, in degrees. */
 export const AIM_LIMIT = 80;
