@@ -621,16 +621,23 @@ class Game {
         const isWon = this.state === 'won';
         const isLast = this.levelIndex + 1 >= LEVELS.length;
         const title = isWon ? (isLast ? 'VSE HOTOVO' : 'KOLO HOTOVO') : 'KONEC HRY';
-        const detail = isWon && this.isNewBest ? 'NOVY REKORD' : `SKORE ${this.score}`;
         const hint = isWon ? (isLast ? 'MEZERNIK MENU' : 'MEZERNIK DAL') : 'MEZERNIK ZNOVU';
         const cx = SCREEN_W / 2;
 
         // The screen is narrow, so the box spans the playfield and the side panel (render() hides the panel).
-        this.fillRect(4, 14, SCREEN_W - 8, 46, C_BG);
-        BT.drawRect(new Rect2i(4, 14, SCREEN_W - 8, 46), C_WALL);
-        this.printCentered(title, cx, 18, isWon ? C_TEXT : C_DANGER);
-        this.printCentered(detail, cx, 31, isWon && this.isNewBest ? C_GUIDE : C_DIM);
-        this.printCentered(hint, cx, 44, C_DIM);
+        this.fillRect(4, 8, SCREEN_W - 8, 60, C_BG);
+        BT.drawRect(new Rect2i(4, 8, SCREEN_W - 8, 60), C_WALL);
+        this.printCentered(title, cx, 11, isWon ? C_TEXT : C_DANGER);
+        this.printCentered(`SKORE ${this.score}`, cx, 24, C_TEXT);
+
+        // Under the score: a new best, or the best to beat.
+        if (isWon && this.isNewBest) {
+            this.printCentered('NOVY REKORD', cx, 37, C_GUIDE);
+        } else if (this.progress.bestOf(this.levelIndex) > 0) {
+            this.printCentered(`REKORD ${this.progress.bestOf(this.levelIndex)}`, cx, 37, C_DIM);
+        }
+
+        this.printCentered(hint, cx, 51, C_DIM);
     }
 
     /**
