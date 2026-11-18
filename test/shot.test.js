@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { Board, cellCenter } from '../src/board.js';
-import { FIELD_TOP, FIELD_W, FIELD_X, LAUNCH_X, LAUNCH_Y, RADIUS } from '../src/config.js';
+import { FIELD_TOP, FIELD_W, FIELD_X, HIT_DIST, LAUNCH_X, LAUNCH_Y, RADIUS } from '../src/config.js';
 import { Shot, tracePath } from '../src/shot.js';
 
 /**
@@ -38,7 +38,7 @@ describe('Shot', () => {
         const shot = new Shot(target.x - 1, LAUNCH_Y, 0);
 
         fly(shot, board);
-        expect(shot.y).toBeGreaterThan(target.y + 6);
+        expect(shot.y).toBeGreaterThan(target.y + HIT_DIST - 1);
         expect(board.snap(shot.x, shot.y)).toEqual({ row: 1, col: 6 });
     });
 

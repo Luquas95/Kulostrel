@@ -14,7 +14,7 @@
     "format:check": "biome format . && prettier --check \"**/*.{md,mdx,mdc,yml,yaml}\"",
     "lint": "biome lint .",
     "lint:fix": "biome lint --write .",
-    "term": "blit-term --status",
+    "term": "blit-term",
     "test": "bun test"
   },
   "dependencies": {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { Board, cellCenter, EMPTY, neighbors, rowWidth } from '../src/board.js';
-import { COLS, MAX_ROWS } from '../src/config.js';
+import { BALL, COLS, MAX_ROWS } from '../src/config.js';
 
 describe('grid shape', () => {
     test('even rows are full width, odd rows one less', () => {
@@ -26,8 +26,8 @@ describe('grid shape', () => {
             const a = cellCenter(4, 6, 0);
             const b = cellCenter(n.row, n.col, 0);
 
-            expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThan(7.5);
-            expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeLessThan(8.5);
+            expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThan(BALL - 0.5);
+            expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeLessThan(BALL + 0.5);
         }
     });
 });
@@ -89,11 +89,22 @@ describe('Board', () => {
         const b = new Board();
 
         b.load(['0']);
-        b.lower();
+        b.descend(1);
 
         const p = cellCenter(1, 0, 1);
 
         expect(b.snap(p.x, p.y)).toEqual({ row: 1, col: 0 });
+    });
+
+    test('snap works while the board is between rows', () => {
+        const b = new Board();
+
+        b.load(['0 0 0', ' 0 0']);
+        b.descend(2.6);
+
+        const p = cellCenter(2, 1, b.drop);
+
+        expect(b.snap(p.x + 0.5, p.y - 0.5)).toEqual({ row: 2, col: 1 });
     });
 
     test('lowestRow reports the deepest ball', () => {

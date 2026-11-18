@@ -3,8 +3,8 @@
 Logická střílečka kuliček v enginu [BLIT386](https://blit386.dev). Hraje se v prohlížeči i v terminálu.
 
 Zamiř odpalovačem a vystřel kuličku do shluku, který visí ze stropu. Tři a více kuliček stejné barvy prasknou; kuličky,
-které tím ztratí spojení se stropem, spadnou. Po několika výstřelech sjede strop o řadu níž. Vyčisti plochu a kolo je
-tvoje; když kulička překročí čáru nad odpalovačem, hra končí.
+které tím ztratí spojení se stropem, spadnou. Kuličky se celou dobu pomalu posouvají dolů, v každém kole o něco
+rychleji. Vyčisti plochu a kolo je tvoje; když kulička překročí čáru nad odpalovačem, hra končí.
 
 ## Ovládání
 
@@ -28,6 +28,16 @@ bun run dev    # v prohlížeči (adresu vypíše terminál)
 bun run term   # v terminálu přes blit-term (Luquas95/Blit386_ASCI)
 bun test       # testy herní logiky
 ```
+
+### Hraní v terminálu
+
+Obraz hry má 128 × 96 pixelů a jeden znak terminálu ukazuje 1 × 2 pixely. Pro ostrý obraz proto terminál potřebuje aspoň
+**128 × 48 znaků** (zjistíš příkazem `stty size`, vypíše řádky a sloupce). Menší terminál musí obraz zmenšit a ten se
+pak rozmaže: zvětši okno nebo zmenši písmo. Když je terminál aspoň dvakrát větší (256 × 96), obraz se ostře zvětší.
+
+- `bun run term -- --status` přidá stavový řádek (fps, velikost); zabere jeden řádek navíc.
+- `bun run term -- --scale nearest` zmenšuje bez rozmazání, ale vynechává pixely.
+- Nejlépe se hraje v Kitty, WezTerm, Ghostty nebo foot (hlásí i uvolnění kláves).
 
 ## Struktura
 

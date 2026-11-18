@@ -24,7 +24,7 @@ describe.each(LEVELS.map((level, i) => [i + 1, level]))('level %i', (_n, level) 
         expect(board.floating()).toEqual([]);
     });
 
-    test('leaves room above the line for a few ceiling drops', () => {
+    test('leaves room above the line for at least four rows of descent', () => {
         const board = new Board();
 
         board.load(level.layout);
@@ -35,7 +35,7 @@ describe.each(LEVELS.map((level, i) => [i + 1, level]))('level %i', (_n, level) 
     });
 });
 
-test('difficulty never gets easier: colors do not shrink, shots per drop do not grow', () => {
+test('difficulty never gets easier: colors do not shrink, the descent does not slow down', () => {
     const counts = LEVELS.map((level) => {
         const board = new Board();
 
@@ -46,6 +46,6 @@ test('difficulty never gets easier: colors do not shrink, shots per drop do not 
 
     for (let i = 1; i < LEVELS.length; i++) {
         expect(counts[i]).toBeGreaterThanOrEqual(counts[i - 1]);
-        expect(LEVELS[i].shotsPerDrop).toBeLessThanOrEqual(LEVELS[i - 1].shotsPerDrop);
+        expect(LEVELS[i].secondsPerRow).toBeLessThanOrEqual(LEVELS[i - 1].secondsPerRow);
     }
 });

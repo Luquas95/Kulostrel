@@ -73,7 +73,7 @@ export function neighbors(row, col) {
  *
  * @param {number} row
  * @param {number} col
- * @param {number} drop how many rows the ceiling has moved down
+ * @param {number} drop how far the ceiling has moved down, in rows (may be a fraction)
  * @returns {{ x: number, y: number }}
  */
 export function cellCenter(row, col, drop) {
@@ -87,7 +87,7 @@ export class Board {
     /** @type {number[][]} */
     cells = [];
 
-    /** How many rows the ceiling has moved down. */
+    /** How far the ceiling has moved down, in rows. Grows smoothly, so it is usually a fraction. */
     drop = 0;
 
     constructor() {
@@ -198,7 +198,7 @@ export class Board {
      * @returns {Cell | null}
      */
     snap(x, y) {
-        const approxRow = Math.round((y - FIELD_TOP - RADIUS) / ROW_H) - this.drop;
+        const approxRow = Math.round((y - FIELD_TOP - RADIUS) / ROW_H - this.drop);
         /** @type {Cell | null} */
         let best = null;
         let bestDist = Infinity;
@@ -292,10 +292,12 @@ export class Board {
     }
 
     /**
-     * Move the whole board one row down (the ceiling presses in).
+     * Move the whole board down (the ceiling presses in).
+     *
+     * @param {number} rows how far, in rows; fractions move it smoothly
      */
-    lower() {
-        this.drop += 1;
+    descend(rows) {
+        this.drop += rows;
     }
 
     /**
